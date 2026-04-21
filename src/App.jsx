@@ -100,6 +100,59 @@ const ACTIVITY_TYPES = [{id:"easy",label:"Easy Run",icon:"◦",desc:"Recovery / 
 const EMPTY_CUSTOM = {brand:"",name:"",type:"shorts",colorway:"",warmthRange:0,notes:""};
 const TODAY = new Date().toDateString();
 
+// ─── INDEXED DB (Photo Storage) ───────────────────────────────────────────────
+let _photoDB = null;
+const openPhotoDB = () => new Promise((resolve, reject) => {
+  if (_photoDB) return resolve(_photoDB);
+  const req = indexedDB.open("stride-photos", 1);
+  req.onupgradeneeded = e => e.target.result.createObjectStore("photos", { keyPath: "lockerId" });
+  req.onsuccess = e => { _photoDB = e.target.result; resolve(_photoDB); };
+  req.onerror = () => reject(req.error);
+});
+const savePhoto = async (lockerId, blob) => {
+  const db = await openPhotoDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("photos", "readwrite");
+    tx.objectStore("photos").put({ lockerId, blob });
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+};
+const getPhoto = async (lockerId) => {
+  const db = await openPhotoDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("photos", "readonly");
+    const req = tx.objectStore("photos").get(lockerId);
+    req.onsuccess = () => resolve(req.result?.blob ?? null);
+    req.onerror = () => reject(req.error);
+  });
+};
+// Resize + compress an image File to JPEG ≤ 1024px before sending to AI
+const compressImage = (file, maxDim = 1024) => new Promise((resolve) => {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(b => resolve(b), "image/jpeg", 0.85);
+  };
+  img.src = url;
+});
+
+const deletePhoto = async (lockerId) => {
+  const db = await openPhotoDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("photos", "readwrite");
+    tx.objectStore("photos").delete(lockerId);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
 // ─── WEATHER ─────────────────────────────────────────────────────────────────
 async function fetchWeather(lat, lon) {
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,wind_speed_10m,relative_humidity_2m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`);
@@ -127,7 +180,8 @@ function buildContext(temp, wind, humidity, activity, persona, locker) {
   const lockerLines = locker.map(item => {
     const ok = item.warmthMin<=temp && item.warmthMax>=temp;
     const worn = item.wornToday===TODAY?" [WORN TODAY — avoid repeating]":"";
-    return `${item.brand} ${item.name} (${item.colorway})${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type}${ok?"":"  ⚠ CLIMATE MISMATCH"}${worn}${item.isCustom?" [custom]":""}`;
+    const shade = item.shadeDescription ? ` | Shade: ${item.shadeDescription}` : "";
+    return `${item.brand} ${item.name} (${item.colorway})${shade}${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type}${ok?"":"  ⚠ CLIMATE MISMATCH"}${worn}${item.isCustom?" [custom]":""}`;
   });
   return {felt,climate,lockerLines,persona};
 }
@@ -156,6 +210,11 @@ export default function Stride() {
   const [dbSearch, setDbSearch] = useState("");
   const [dbType, setDbType] = useState("all");
   const [toast, setToast] = useState("");
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [shadeAnalysis, setShadeAnalysis] = useState(null);
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
+  const [lockerPhotos, setLockerPhotos] = useState(new Map());
 
 // Persistence - Web Standard Version
   useEffect(() => {
@@ -176,6 +235,21 @@ export default function Stride() {
         localStorage.setItem("stride-v6-locker", JSON.stringify(locker));
         if (persona) localStorage.setItem("stride-persona", persona);
       }, [locker, persona, ready]);
+
+  // Load photos from IndexedDB on mount
+  useEffect(() => {
+    if (!ready) return;
+    (async () => {
+      const map = new Map();
+      for (const item of locker) {
+        try {
+          const blob = await getPhoto(item.lockerId);
+          if (blob) map.set(item.lockerId, URL.createObjectURL(blob));
+        } catch(e) {}
+      }
+      setLockerPhotos(map);
+    })();
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto weather on mount — silent attempt, no UI noise
   useEffect(() => {
@@ -213,23 +287,90 @@ export default function Stride() {
   };
 
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2400); };
-  const savePersona = (p) => { setPersona(p); window.storage.set("stride-persona",p).catch(()=>{}); };
+  const savePersona = (p) => { setPersona(p); };
 
-  const addToLocker = (item, cw) => {
-    setLocker(prev => [...prev, {...item, colorway:cw, lockerId:`${item.id}-${cw}-${Date.now()}`}]);
+  const resetPhotoState = () => {
+    setPhotoFile(null); setPhotoPreview(null); setShadeAnalysis(null); setAnalyzingPhoto(false);
+  };
+
+  const analyzePhotoShade = async (file) => {
+    const dataUrl = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res(reader.result);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+    const base64 = dataUrl.split(",")[1];
+    const mediaType = file.type || "image/jpeg";
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 150,
+        messages: [{ role: "user", content: [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+          { type: "text", text: "Describe the exact shade and color of this running gear in 1-2 precise sentences. Be specific about tone (e.g., 'deep navy with slight purple undertones', not just 'blue'). Help a colorblind person coordinate outfits." }
+        ]}]
+      })
+    });
+    const d = await res.json();
+    return d.content?.[0]?.text?.trim() || "";
+  };
+
+  const handlePhotoCapture = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const compressed = await compressImage(file);
+    setPhotoFile(compressed);
+    setPhotoPreview(URL.createObjectURL(compressed));
+    setShadeAnalysis(null);
+    setAnalyzingPhoto(true);
+    try {
+      const analysis = await analyzePhotoShade(compressed);
+      setShadeAnalysis(analysis);
+    } catch(err) {
+      setShadeAnalysis("Could not analyze shade — photo will still be saved.");
+    }
+    setAnalyzingPhoto(false);
+  };
+
+  const addToLocker = async (item, cw) => {
+    const lockerId = `${item.id}-${cw}-${Date.now()}`;
+    setLocker(prev => [...prev, {...item, colorway:cw, lockerId, shadeDescription: shadeAnalysis||null}]);
+    if (photoFile) {
+      await savePhoto(lockerId, photoFile);
+      const url = URL.createObjectURL(photoFile);
+      setLockerPhotos(prev => new Map(prev).set(lockerId, url));
+    }
     setAddingItem(null); setColorway(""); setAddModal(false);
+    resetPhotoState();
     showToast("Added to locker ✓");
   };
 
-  const addCustom = () => {
+  const addCustom = async () => {
     if (!customForm.brand||!customForm.name||!customForm.colorway) return;
     const range = WARMTH_RANGES[customForm.warmthRange];
-    setLocker(prev => [...prev, {id:`c-${Date.now()}`,lockerId:`c-${Date.now()}-${Math.random()}`,brand:customForm.brand.trim(),name:customForm.name.trim(),type:customForm.type,colorway:customForm.colorway.trim(),notes:customForm.notes.trim(),warmthMin:range.min,warmthMax:range.max,persona:[],isCustom:true}]);
-    setCustomForm(EMPTY_CUSTOM); setAddModal(false);
+    const ts = Date.now();
+    const lockerId = `c-${ts}-${Math.random()}`;
+    const newItem = { id:`c-${ts}`, lockerId, brand:customForm.brand.trim(), name:customForm.name.trim(), type:customForm.type, colorway:customForm.colorway.trim(), notes:customForm.notes.trim(), warmthMin:range.min, warmthMax:range.max, persona:[], isCustom:true, shadeDescription: shadeAnalysis||null };
+    setLocker(prev => [...prev, newItem]);
+    if (photoFile) {
+      await savePhoto(lockerId, photoFile);
+      const url = URL.createObjectURL(photoFile);
+      setLockerPhotos(prev => new Map(prev).set(lockerId, url));
+    }
+    setCustomForm(EMPTY_CUSTOM);
+    resetPhotoState();
+    setAddModal(false);
     showToast("Added to locker ✓");
   };
 
-  const removeFromLocker = (id) => setLocker(prev => prev.filter(i=>i.lockerId!==id));
+  const removeFromLocker = async (id) => {
+    setLocker(prev => prev.filter(i=>i.lockerId!==id));
+    await deletePhoto(id);
+    setLockerPhotos(prev => { const m = new Map(prev); m.delete(id); return m; });
+  };
 
   const toggleWornToday = (lockerId) => {
     setLocker(prev => prev.map(i => i.lockerId===lockerId ? {...i, wornToday:i.wornToday===TODAY?null:TODAY} : i));
@@ -305,7 +446,7 @@ RULES: Prioritize locker items. Skip CLIMATE MISMATCH or WORN TODAY items. Alway
 JSON only:
 {"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name","colorway":"colorway","why":"one sentence"},{"category":"Top","item":"brand+name","colorway":"colorway","why":"one sentence"},{"category":"Shoes","item":"brand+model","colorway":"colorway","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:prompt}]})});
+      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:prompt}]})});
       const d = await res.json();
       const txt = d.content?.find(b=>b.type==="text")?.text||"";
       setSuggestion(JSON.parse(txt.replace(/```json|```/g,"").trim()));
@@ -401,7 +542,7 @@ JSON only:
             <div className="rn" style={{marginTop:8}}/>
           </div>
           <nav style={{display:"flex"}}>
-            {[["home","Today"],["locker","My Locker"],["gear","Browse"]].map(([id,label])=>(
+            {[["home","Today"],["locker","Locker"],["photos","Photos"],["gear","Browse"]].map(([id,label])=>(
               <button key={id} className={`nav-btn ${view===id||(view==="suggest"&&id==="home")?"active":""}`} onClick={()=>setView(id)}>{label}</button>
             ))}
           </nav>
@@ -566,6 +707,9 @@ JSON only:
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {lockerFiltered.map(item=>(
                     <div key={item.lockerId} className={`li ${item.isCustom?"custom":""} ${item.wornToday===TODAY?"worn":""}`}>
+                      {lockerPhotos.has(item.lockerId) && (
+                        <img src={lockerPhotos.get(item.lockerId)} alt="" style={{width:46,height:46,objectFit:"cover",flexShrink:0,border:"1px solid #E8E4DF",cursor:"pointer"}} onClick={()=>setView("photos")}/>
+                      )}
                       <div style={{flex:1,minWidth:0}}>
                         <p className="dm" style={{fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",color:"#888",marginBottom:1}}>
                           {item.brand}{item.fabric?` · ${item.fabric}`:""} · {TYPE_LABELS[item.type]||item.type}
@@ -573,6 +717,7 @@ JSON only:
                         </p>
                         <p className="dm" style={{fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</p>
                         <p className="dm" style={{fontSize:12,color:"#aaa"}}>{item.colorway}</p>
+                        {item.shadeDescription&&<p className="dm" style={{fontSize:11,color:"#bbb",marginTop:1,fontStyle:"italic"}}>{item.shadeDescription}</p>}
                         {item.notes&&<p className="dm" style={{fontSize:11,color:"#bbb",marginTop:1,fontStyle:"italic"}}>{item.notes}</p>}
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
@@ -619,15 +764,44 @@ JSON only:
             </div>
           </div>
         )}
+        {/* ── PHOTOS ── */}
+        {view==="photos" && (
+          <div>
+            <div className="rt" style={{width:34,marginBottom:5}}/>
+            <h2 className="pf" style={{fontSize:20,fontWeight:700,marginBottom:16}}>Photo Library</h2>
+            {lockerPhotos.size===0 ? (
+              <div style={{textAlign:"center",padding:"52px 20px"}}>
+                <p className="pf" style={{fontSize:18,fontStyle:"italic",color:"#888",marginBottom:9}}>No photos yet.</p>
+                <p className="dm" style={{fontSize:13,color:"#aaa",marginBottom:16}}>Capture a photo when adding gear to get precise shade analysis.</p>
+                <button className="btn2" onClick={()=>{setView("locker");setAddModal(true);setAddMode("browse");}}>Add Gear</button>
+              </div>
+            ) : (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {locker.filter(item=>lockerPhotos.has(item.lockerId)).map(item=>(
+                  <div key={item.lockerId} style={{position:"relative",cursor:"default"}}>
+                    <img src={lockerPhotos.get(item.lockerId)} alt="" style={{width:"100%",aspectRatio:"1",objectFit:"cover",display:"block"}}/>
+                    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent,rgba(0,0,0,.72))",padding:"28px 9px 9px"}}>
+                      <p className="dm" style={{fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase",color:"rgba(255,255,255,.6)",marginBottom:1}}>{item.brand}</p>
+                      <p className="dm" style={{fontSize:12,fontWeight:500,color:"white",lineHeight:1.2}}>{item.name}</p>
+                      <p className="dm" style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2}}>{item.colorway}</p>
+                      {item.shadeDescription&&<p className="dm" style={{fontSize:10,color:"rgba(255,255,255,.55)",marginTop:3,fontStyle:"italic",lineHeight:1.3}}>{item.shadeDescription}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
       </main>
 
       {/* ADD MODAL */}
       {addModal && (
-        <div className="overlay" onClick={()=>setAddModal(false)}>
+        <div className="overlay" onClick={()=>{setAddModal(false);resetPhotoState();}}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:13}}>
               <h3 className="pf" style={{fontSize:18,fontWeight:700}}>Add to Locker</h3>
-              <button className="nb" onClick={()=>setAddModal(false)} style={{fontSize:20,color:"#888"}}>×</button>
+              <button className="nb" onClick={()=>{setAddModal(false);resetPhotoState();}} style={{fontSize:20,color:"#888"}}>×</button>
             </div>
             <div style={{display:"flex",borderBottom:"1px solid #E8E4DF",marginBottom:16}}>
               <button className={`stab ${addMode==="browse"?"on":""}`} onClick={()=>setAddMode("browse")}>Browse</button>
@@ -679,7 +853,29 @@ JSON only:
                     {WARMTH_RANGES.map((r,i)=><option key={i} value={i}>{r.label}</option>)}
                   </select>
                 </div>
-                <button className="btn" style={{marginTop:3}} disabled={!customForm.brand||!customForm.name||!customForm.colorway} onClick={addCustom}>Add to Locker</button>
+                <div>
+                  <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:8}}>Photo for Shade Analysis <span style={{color:"#bbb",fontWeight:400,textTransform:"none",letterSpacing:0}}>(optional)</span></p>
+                  {!photoPreview ? (
+                    <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,border:"1.5px dashed #ddd",padding:"14px",cursor:"pointer",background:"white"}}>
+                      <input type="file" accept="image/*" style={{display:"none"}} onChange={handlePhotoCapture}/>
+                      <span style={{fontSize:15}}>📷</span>
+                      <span className="dm" style={{fontSize:12,color:"#888"}}>Capture or upload photo</span>
+                    </label>
+                  ) : (
+                    <div>
+                      <img src={photoPreview} alt="Preview" style={{width:"100%",maxHeight:180,objectFit:"cover",marginBottom:8,display:"block"}}/>
+                      {analyzingPhoto && <p className="dm pulse" style={{fontSize:12,color:"#888",marginBottom:6}}>Analyzing shade…</p>}
+                      {shadeAnalysis && !analyzingPhoto && (
+                        <div style={{background:"#F0EDE8",padding:"9px 12px",marginBottom:8}}>
+                          <p className="dm" style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:"#888",marginBottom:3}}>Shade Analysis</p>
+                          <p className="dm" style={{fontSize:12,color:"#444",fontStyle:"italic",lineHeight:1.4}}>{shadeAnalysis}</p>
+                        </div>
+                      )}
+                      <button className="btn-sm" onClick={resetPhotoState}>Remove Photo</button>
+                    </div>
+                  )}
+                </div>
+                <button className="btn" style={{marginTop:3}} disabled={!customForm.brand||!customForm.name||!customForm.colorway||analyzingPhoto} onClick={addCustom}>Add to Locker</button>
               </div>
             )}
           </div>
@@ -688,19 +884,41 @@ JSON only:
 
       {/* COLORWAY PICKER */}
       {addingItem && (
-        <div className="overlay" onClick={()=>setAddingItem(null)}>
+        <div className="overlay" onClick={()=>{setAddingItem(null);resetPhotoState();}}>
           <div className="modal" onClick={e=>e.stopPropagation()}>
             <p className="dm" style={{fontSize:10,letterSpacing:"0.16em",textTransform:"uppercase",color:"#888",marginBottom:3}}>{addingItem.brand}{addingItem.fabric?` · ${addingItem.fabric}`:""}</p>
             <h3 className="pf" style={{fontSize:19,fontWeight:700,marginBottom:5}}>{addingItem.name}</h3>
             {addingItem.use&&<p className="dm" style={{fontSize:12,color:"#888",marginBottom:11}}>{addingItem.use}</p>}
             <div className="rn" style={{marginBottom:13}}/>
             <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:8}}>Select Colorway</p>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
               {addingItem.colorways.map(c=>(<button key={c} className={`cw-btn ${colorway===c?"on":""}`} onClick={()=>setColorway(c)}>{c}</button>))}
             </div>
+            <div style={{borderTop:"1px solid #E8E4DF",paddingTop:14,marginBottom:16}}>
+              <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:8}}>Photo for Shade Analysis <span style={{color:"#bbb",fontWeight:400,textTransform:"none",letterSpacing:0}}>(optional)</span></p>
+              {!photoPreview ? (
+                <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,border:"1.5px dashed #ddd",padding:"16px",cursor:"pointer",background:"white"}}>
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={handlePhotoCapture}/>
+                  <span style={{fontSize:16}}>📷</span>
+                  <span className="dm" style={{fontSize:12,color:"#888"}}>Capture or upload photo</span>
+                </label>
+              ) : (
+                <div>
+                  <img src={photoPreview} alt="Preview" style={{width:"100%",maxHeight:200,objectFit:"cover",marginBottom:8,display:"block"}}/>
+                  {analyzingPhoto && <p className="dm pulse" style={{fontSize:12,color:"#888",marginBottom:6}}>Analyzing shade…</p>}
+                  {shadeAnalysis && !analyzingPhoto && (
+                    <div style={{background:"#F0EDE8",padding:"9px 12px",marginBottom:8}}>
+                      <p className="dm" style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:"#888",marginBottom:3}}>Shade Analysis</p>
+                      <p className="dm" style={{fontSize:12,color:"#444",fontStyle:"italic",lineHeight:1.4}}>{shadeAnalysis}</p>
+                    </div>
+                  )}
+                  <button className="btn-sm" onClick={resetPhotoState}>Remove Photo</button>
+                </div>
+              )}
+            </div>
             <div style={{display:"flex",gap:8}}>
-              <button className="btn2" style={{flex:1}} onClick={()=>setAddingItem(null)}>Cancel</button>
-              <button className="btn" style={{flex:1}} disabled={!colorway} onClick={()=>addToLocker(addingItem,colorway)}>Add to Locker</button>
+              <button className="btn2" style={{flex:1}} onClick={()=>{setAddingItem(null);resetPhotoState();}}>Cancel</button>
+              <button className="btn" style={{flex:1}} disabled={!colorway||analyzingPhoto} onClick={()=>addToLocker(addingItem,colorway)}>Add to Locker</button>
             </div>
           </div>
         </div>
@@ -734,7 +952,7 @@ JSON only:
             ))}
             <div className="rn" style={{margin:"18px 0 12px"}}/>
             <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#aaa",marginBottom:6}}>Coming Soon</p>
-            {["Photo capture for exact shade/tone matching","Colorblindness type","Run-hot / run-cold tendency","Home location for auto-weather","Training app integration"].map(i=>(
+            {["Colorblindness type","Run-hot / run-cold tendency","Home location for auto-weather","Training app integration"].map(i=>(
               <p key={i} className="dm" style={{fontSize:12,color:"#bbb",marginBottom:4,paddingLeft:3}}>· {i}</p>
             ))}
           </div>
