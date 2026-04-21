@@ -157,23 +157,26 @@ export default function Stride() {
   const [dbType, setDbType] = useState("all");
   const [toast, setToast] = useState("");
 
-  // Persistence
-  useEffect(() => {
-    (async () => {
-      try {
-        const l = await window.storage.get("stride-v6-locker");
-        if (l?.value) setLocker(JSON.parse(l.value));
-        const p = await window.storage.get("stride-persona");
-        if (p?.value) setPersona(p.value);
-      } catch(e){}
-      setReady(true);
-    })();
-  }, []);
+  // Data Persistence (Updates)
+useEffect(() => {
+  if (!ready) return;
+  localStorage.setItem("stride-v6-locker", JSON.stringify(locker));
+  if (persona) localStorage.setItem("stride-persona", persona);
+}, [locker, persona, ready]);
 
-  useEffect(() => {
-    if (!ready) return;
-    window.storage.set("stride-v6-locker", JSON.stringify(locker)).catch(()=>{});
-  }, [locker, ready]);
+  // Data Loading (Mount)
+useEffect(() => {
+  try {
+    const savedLocker = localStorage.getItem("stride-v6-locker");
+    if (savedLocker) setLocker(JSON.parse(savedLocker));
+    
+    const savedPersona = localStorage.getItem("stride-persona");
+    if (savedPersona) setPersona(savedPersona);
+  } catch (e) {
+    console.error("Storage load error:", e);
+  }
+  setReady(true);
+}, []);
 
   // Auto weather on mount — silent attempt, no UI noise
   useEffect(() => {
