@@ -1,0 +1,12 @@
+services:
+  stride-locker:
+    build: .
+    container_name: stride-locker
+    ports:
+      - "3005:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - WATCHPACK_POLLING=true
+    restart: unless-stopped
