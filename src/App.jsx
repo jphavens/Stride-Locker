@@ -304,7 +304,7 @@ export default function Stride() {
     const mediaType = file.type || "image/jpeg";
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      headers: { "Content-Type": "application/json", "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 150,
@@ -446,7 +446,7 @@ RULES: Prioritize locker items. Skip CLIMATE MISMATCH or WORN TODAY items. Alway
 JSON only:
 {"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name","colorway":"colorway","why":"one sentence"},{"category":"Top","item":"brand+name","colorway":"colorway","why":"one sentence"},{"category":"Shoes","item":"brand+model","colorway":"colorway","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:prompt}]})});
+      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:prompt}]})});
       const d = await res.json();
       const txt = d.content?.find(b=>b.type==="text")?.text||"";
       setSuggestion(JSON.parse(txt.replace(/```json|```/g,"").trim()));
