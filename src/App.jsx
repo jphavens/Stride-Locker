@@ -33,7 +33,7 @@ const GEAR_DB = [
   { id:"ts2", brand:"Satisfy", name:"MothTech Muscle Tee", type:"top-ss", fabric:"MothTech™", persona:["fashion-pacer"], warmthMin:58, warmthMax:95, colorways:["Black","Off White","Washed Brown"] },
   { id:"ts3", brand:"Satisfy", name:"PeaceShell River Shirt", type:"top-ss", fabric:"PeaceShell™", persona:["fashion-pacer"], warmthMin:52, warmthMax:85, colorways:["Black","Olive","Ecru"] },
   { id:"ts4", brand:"Tracksmith", name:"Harrier Tee", type:"top-ss", fabric:"Merino/Nylon", persona:["realkeeper"], warmthMin:48, warmthMax:85, colorways:["Heather Grey","Navy","Ivory","Bering Sea"] },
-  { id:"ts5", brand:"Tracksmith", name:"Van Cortlandt Singlet", type:"top-ss", fabric:"2:09 Mesh", persona:["realkeeper"], warmthMin:55, warmthMax:95, colorways:["Heather Grey/Navy","Black/Gold","Ivory/Wine"] },
+  { id:"ts5", brand:"Tracksmith", name:"Van Cortlandt Singlet", type:"tank", fabric:"2:09 Mesh", persona:["realkeeper"], warmthMin:58, warmthMax:95, colorways:["Heather Grey/Navy","Black/Gold","Ivory/Wine"] },
   { id:"ts6", brand:"District Vision", name:"Karuna Training Tee", type:"top-ss", fabric:"Recycled Mesh", persona:["mindful"], warmthMin:55, warmthMax:95, colorways:["Black","White","Sage","Chamomile","Arctic Gray"] },
   { id:"ts7", brand:"On Running", name:"Performance Tee", type:"top-ss", fabric:"On-Dry", persona:["precision"], warmthMin:50, warmthMax:95, colorways:["Black","White","Glacier","Undyed"] },
   { id:"ts8", brand:"Janji", name:"Groundwork Tee", type:"top-ss", fabric:"AFO Air", persona:["precision"], warmthMin:50, warmthMax:90, colorways:["Black","Fog","Rust","Dusk Blue"] },
@@ -94,7 +94,7 @@ const GEAR_DB = [
   { id:"sh18", brand:"Hoka x Satisfy", name:"Mafate Speed 4 Lite", type:"shoes", persona:["fashion-pacer"], use:"Trail / Collab", warmthMin:0, warmthMax:95, colorways:["Silver/Clear Technical"] },
 ];
 
-const TYPE_LABELS = { "shorts":"Shorts","tights":"Tights","top-ss":"Short Sleeve","top-ls":"Long Sleeve","midlayer":"Midlayer","jacket":"Jacket","vest":"Vest","hat":"Hat / Cap","gloves":"Gloves","socks":"Socks","shoes":"Shoes" };
+const TYPE_LABELS = { "shorts":"Shorts","tights":"Tights","tank":"Tank / Singlet","top-ss":"Short Sleeve","top-ls":"Long Sleeve","midlayer":"Midlayer","jacket":"Jacket","vest":"Vest","hat":"Hat / Cap","gloves":"Gloves","socks":"Socks","shoes":"Shoes" };
 const WARMTH_RANGES = [{label:"Any temp",min:0,max:95},{label:"Cold (under 40°F)",min:0,max:40},{label:"Cool (40–55°F)",min:40,max:55},{label:"Mild (55–65°F)",min:55,max:65},{label:"Warm (65°F+)",min:65,max:95}];
 const ACTIVITY_TYPES = [{id:"easy",label:"Easy Run",icon:"◦",desc:"Recovery / conversational pace"},{id:"workout",label:"Workout",icon:"◈",desc:"Tempo, intervals, or fartlek"},{id:"long",label:"Long Run",icon:"◉",desc:"Distance — 60+ minutes"},{id:"race",label:"Race",icon:"◎",desc:"All out effort"}];
 const EMPTY_CUSTOM = {brand:"",name:"",type:"shorts",colorway:"",warmthRange:0,notes:""};
@@ -171,9 +171,9 @@ function buildContext(temp, wind, humidity, activity, persona, locker) {
   if (felt<32)      {climate.push("REQUIRED bottom: tights");climate.push("REQUIRED top: long sleeve base");climate.push("REQUIRED: midlayer or jacket");climate.push("REQUIRED: gloves");}
   else if (felt<42) {climate.push("REQUIRED bottom: tights preferred");climate.push("REQUIRED top: long sleeve");climate.push("CONSIDER: midlayer, gloves");}
   else if (felt<52) {climate.push("bottom: tights or shorts");climate.push("top: long sleeve or short sleeve");}
-  else if (felt<62) {climate.push("REQUIRED bottom: shorts");climate.push("top: short sleeve");}
-  else if (felt<72) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve or singlet");}
-  else              {climate.push("REQUIRED bottom: lightest shorts");climate.push("REQUIRED top: singlet or lightest short sleeve");}
+  else if (felt<62) {climate.push("REQUIRED bottom: shorts");climate.push("top: short sleeve — no tanks");}
+  else if (felt<72) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve or tank/singlet");}
+  else              {climate.push("REQUIRED bottom: lightest shorts");climate.push("REQUIRED top: tank/singlet preferred, lightest short sleeve acceptable");}
   if (wind>18) climate.push("REQUIRED: wind-blocking layer");
   if (humidity>78) climate.push("REQUIRED: moisture-wicking only");
   if (activity==="long") climate.push("CONSIDER: pockets, anti-chafe fabrics");
