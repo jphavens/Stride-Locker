@@ -215,6 +215,7 @@ export default function Stride() {
   const [shadeAnalysis, setShadeAnalysis] = useState(null);
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
   const [lockerPhotos, setLockerPhotos] = useState(new Map());
+  const [editingItem, setEditingItem] = useState(null);
 
 // Persistence - Web Standard Version
   useEffect(() => {
@@ -291,6 +292,28 @@ export default function Stride() {
 
   const resetPhotoState = () => {
     setPhotoFile(null); setPhotoPreview(null); setShadeAnalysis(null); setAnalyzingPhoto(false);
+  };
+
+  const openEditModal = (item) => {
+    setEditingItem(item);
+    setShadeAnalysis(item.shadeDescription || null);
+    setPhotoFile(null);
+    setAnalyzingPhoto(false);
+    setPhotoPreview(lockerPhotos.get(item.lockerId) || null);
+  };
+
+  const saveEdit = async () => {
+    setLocker(prev => prev.map(i =>
+      i.lockerId === editingItem.lockerId ? {...i, shadeDescription: shadeAnalysis || null} : i
+    ));
+    if (photoFile) {
+      await savePhoto(editingItem.lockerId, photoFile);
+      const url = URL.createObjectURL(photoFile);
+      setLockerPhotos(prev => new Map(prev).set(editingItem.lockerId, url));
+    }
+    setEditingItem(null);
+    resetPhotoState();
+    showToast("Updated ✓");
   };
 
   const analyzePhotoShade = async (file) => {
@@ -725,6 +748,7 @@ JSON only:
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
                         <button className="nb dm" onClick={()=>toggleWornToday(item.lockerId)} title={item.wornToday===TODAY?"Unmark worn today":"Mark worn today"} style={{fontSize:13,color:"#C8A96E",opacity:item.wornToday===TODAY?1:0.25}}>●</button>
+                        <button className="nb" onClick={()=>openEditModal(item)} title="Edit item" style={{color:"#bbb",fontSize:13,lineHeight:1}}>✏</button>
                         <button className="nb" onClick={()=>removeFromLocker(item.lockerId)} style={{color:"#ccc",fontSize:18,lineHeight:1}}>×</button>
                       </div>
                     </div>
@@ -922,6 +946,47 @@ JSON only:
             <div style={{display:"flex",gap:8}}>
               <button className="btn2" style={{flex:1}} onClick={()=>{setAddingItem(null);resetPhotoState();}}>Cancel</button>
               <button className="btn" style={{flex:1}} disabled={!colorway||analyzingPhoto} onClick={()=>addToLocker(addingItem,colorway)}>Add to Locker</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT ITEM MODAL */}
+      {editingItem && (
+        <div className="overlay" onClick={()=>{setEditingItem(null);resetPhotoState();}}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:13}}>
+              <div>
+                <p className="dm" style={{fontSize:10,letterSpacing:"0.1em",textTransform:"uppercase",color:"#888",marginBottom:2}}>{editingItem.brand} · {TYPE_LABELS[editingItem.type]||editingItem.type}</p>
+                <h3 className="pf" style={{fontSize:18,fontWeight:700}}>{editingItem.name}</h3>
+                <p className="dm" style={{fontSize:12,color:"#aaa",marginTop:2}}>{editingItem.colorway}</p>
+              </div>
+              <button className="nb" onClick={()=>{setEditingItem(null);resetPhotoState();}} style={{fontSize:20,color:"#888"}}>×</button>
+            </div>
+            <div className="rn" style={{marginBottom:14}}/>
+            <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:8}}>Photo & Shade Analysis</p>
+            {!photoPreview ? (
+              <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,border:"1.5px dashed #ddd",padding:"16px",cursor:"pointer",background:"white",marginBottom:16}}>
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={handlePhotoCapture}/>
+                <span style={{fontSize:16}}>📷</span>
+                <span className="dm" style={{fontSize:12,color:"#888"}}>Capture or upload photo</span>
+              </label>
+            ) : (
+              <div style={{marginBottom:16}}>
+                <img src={photoPreview} alt="Preview" style={{width:"100%",maxHeight:200,objectFit:"cover",marginBottom:8,display:"block"}}/>
+                {analyzingPhoto && <p className="dm pulse" style={{fontSize:12,color:"#888",marginBottom:6}}>Analyzing shade…</p>}
+                {shadeAnalysis && !analyzingPhoto && (
+                  <div style={{background:"#F0EDE8",padding:"9px 12px",marginBottom:8}}>
+                    <p className="dm" style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:"#888",marginBottom:3}}>Shade Analysis</p>
+                    <p className="dm" style={{fontSize:12,color:"#444",fontStyle:"italic",lineHeight:1.4}}>{shadeAnalysis}</p>
+                  </div>
+                )}
+                <button className="btn-sm" onClick={()=>{setPhotoFile(null);setPhotoPreview(null);}}>Replace Photo</button>
+              </div>
+            )}
+            <div style={{display:"flex",gap:8}}>
+              <button className="btn2" style={{flex:1}} onClick={()=>{setEditingItem(null);resetPhotoState();}}>Cancel</button>
+              <button className="btn" style={{flex:1}} disabled={analyzingPhoto} onClick={saveEdit}>Save</button>
             </div>
           </div>
         </div>
