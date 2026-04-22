@@ -35,7 +35,7 @@ Five personas filter brand/aesthetic preference: Real Keeper, Fashion Pacer, Pre
 
 ### Stack
 - **Frontend:** React, Vite, Tailwind v4 (via inline CSS in `css` template literal), Lucide-React, Recharts, Framer Motion
-- **Host:** Ubuntu Server via Tailscale (`stride.home`, port 5173)
+- **Host:** Ubuntu Server via Tailscale — accessed at `https://stride.home:8443` (reverse proxy handles HTTPS; Vite runs on port 5173 behind it)
 - **No backend / no server-side auth** — all API calls are client-side
 
 ### File Structure
