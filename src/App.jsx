@@ -315,7 +315,10 @@ export default function Stride() {
       })
     });
     const d = await res.json();
-    return d.content?.[0]?.text?.trim() || "";
+    if (!res.ok) throw new Error(d.error?.message || `API error ${res.status}`);
+    const text = d.content?.[0]?.text?.trim();
+    if (!text) throw new Error("Empty response from model");
+    return text;
   };
 
   const handlePhotoCapture = async (e) => {
@@ -330,7 +333,7 @@ export default function Stride() {
       const analysis = await analyzePhotoShade(compressed);
       setShadeAnalysis(analysis);
     } catch(err) {
-      setShadeAnalysis("Could not analyze shade — photo will still be saved.");
+      setShadeAnalysis(`Could not analyze shade (${err.message}) — photo will still be saved.`);
     }
     setAnalyzingPhoto(false);
   };
