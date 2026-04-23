@@ -406,7 +406,7 @@ export default function Stride() {
   const findLockerMatches = (suggestedItemName) => {
     if (!suggestedItemName) return [];
     const lower = suggestedItemName.toLowerCase();
-    return locker.filter(i => lower.includes(i.name.toLowerCase()) || lower.includes(i.brand.toLowerCase()));
+    return locker.filter(i => lower.includes(i.name.toLowerCase()));
   };
 
   // Toggle a suggested item in the worn selection set
@@ -432,7 +432,7 @@ export default function Stride() {
     setLocker(prev => prev.map(item => {
       const shouldMark = [...wornSelections].some(name => {
         const lower = name.toLowerCase();
-        return lower.includes(item.name.toLowerCase()) || lower.includes(item.brand.toLowerCase());
+        return lower.includes(item.name.toLowerCase());
       });
       if (shouldMark && item.wornToday!==TODAY) { matched++; return {...item, wornToday:TODAY}; }
       return item;
