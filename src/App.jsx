@@ -168,12 +168,12 @@ function buildContext(temp, wind, humidity, activity, locker) {
   const adj = (activity==="workout"||activity==="race")?15:activity==="easy"?-5:0;
   const felt = temp + adj;
   const climate = [];
-  if (felt<32)      {climate.push("REQUIRED bottom: tights");climate.push("REQUIRED top: long sleeve base");climate.push("REQUIRED: midlayer or jacket");climate.push("REQUIRED: gloves");}
-  else if (felt<42) {climate.push("REQUIRED bottom: tights preferred");climate.push("REQUIRED top: long sleeve");climate.push("CONSIDER: midlayer, gloves");}
-  else if (felt<52) {climate.push("bottom: tights or shorts");climate.push("top: long sleeve or short sleeve");}
-  else if (felt<62) {climate.push("REQUIRED bottom: shorts");climate.push("top: short sleeve — no tanks");}
+  if (felt<32)      {climate.push("REQUIRED bottom: tights");climate.push("REQUIRED top: long sleeve base layer");climate.push("REQUIRED: midlayer or jacket");climate.push("REQUIRED: gloves");climate.push("REQUIRED: hat or beanie");climate.push("CONSIDER: neck gaiter or buff");}
+  else if (felt<42) {climate.push("REQUIRED bottom: tights");climate.push("REQUIRED top: long sleeve");climate.push("REQUIRED: gloves");climate.push("CONSIDER: midlayer");climate.push("CONSIDER: light hat or ear covering");}
+  else if (felt<52) {climate.push("REQUIRED bottom: tights or shorts");climate.push("REQUIRED top: long sleeve or short sleeve");climate.push("CONSIDER: light gloves");}
+  else if (felt<62) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve — no tanks");}
   else if (felt<72) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve or tank/singlet");}
-  else              {climate.push("REQUIRED bottom: lightest shorts");climate.push("REQUIRED top: tank/singlet preferred, lightest short sleeve acceptable");}
+  else              {climate.push("REQUIRED bottom: lightest shorts");climate.push("REQUIRED top: tank/singlet preferred, lightest short sleeve acceptable");climate.push("CONSIDER: lightweight cap for sun and sweat");}
   if (wind>18) climate.push("REQUIRED: wind-blocking layer");
   if (humidity>78) climate.push("REQUIRED: moisture-wicking only");
   if (activity==="long") climate.push("CONSIDER: pockets, anti-chafe fabrics");
@@ -494,12 +494,12 @@ COLOR: Neutrals (black/white/grey/navy/ecru/olive) pair with anything. Earth ton
 LOCKER:
 ${ctx.lockerLines.length>0 ? ctx.lockerLines.join("\n") : "Empty"}
 
-RULES: ONLY suggest items from the LOCKER list above. Skip any item marked CLIMATE MISMATCH or WORN TODAY. Always include shoes. If a required climate category has no suitable item in the locker, set "item" to null and provide a "typeRecommendation" describing what type of gear to add (e.g. "lightweight running gloves", "moisture-wicking long sleeve base layer"). Never invent brand names or models not in the locker.
+RULES: ONLY suggest items from the LOCKER list above. Skip any item marked CLIMATE MISMATCH or WORN TODAY. Always include Bottom, Top, and Shoes. Add accessory categories (Gloves, Hat, etc.) whenever climate rules list them as REQUIRED or CONSIDER — REQUIRED accessories must always appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item. If any item has no suitable locker match, set "item" to null and provide a "typeRecommendation" describing what type of gear to add. Never invent brand names or models not in the locker.
 
 JSON only:
-{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Shoes","item":"brand+model or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
+{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Shoes","item":"brand+model or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Gloves","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:prompt}]})});
+      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]})});
       const d = await res.json();
       const txt = d.content?.find(b=>b.type==="text")?.text||"";
       setSuggestion(JSON.parse(txt.replace(/```json|```/g,"").trim()));
