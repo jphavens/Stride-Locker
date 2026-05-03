@@ -164,7 +164,7 @@ async function fetchWeather(lat, lon) {
 }
 
 // ─── ALGORITHM ───────────────────────────────────────────────────────────────
-function buildContext(temp, wind, humidity, activity, persona, locker) {
+function buildContext(temp, wind, humidity, activity, locker) {
   const adj = (activity==="workout"||activity==="race")?15:activity==="easy"?-5:0;
   const felt = temp + adj;
   const climate = [];
@@ -183,7 +183,7 @@ function buildContext(temp, wind, humidity, activity, persona, locker) {
     const shade = item.shadeDescription ? ` | Shade: ${item.shadeDescription}` : "";
     return `${item.brand} ${item.name} (${item.colorway})${shade}${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type}${ok?"":"  ⚠ CLIMATE MISMATCH"}${worn}${item.isCustom?" [custom]":""}`;
   });
-  return {felt,climate,lockerLines,persona};
+  return {felt,climate,lockerLines};
 }
 
 // ─── COMPONENT ───────────────────────────────────────────────────────────────
@@ -193,7 +193,6 @@ export default function Stride() {
   const [weather, setWeather] = useState({temp:52,wind:8,humidity:60,condition:"Partly Cloudy",auto:false});
   const [wxStatus, setWxStatus] = useState("idle"); // idle | loading | ok | error
   const [activity, setActivity] = useState("easy");
-  const [persona, setPersona] = useState("realkeeper");
   const [suggestion, setSuggestion] = useState(null);
   const [suggesting, setSuggesting] = useState(false);
   // worn selections on suggestion screen — set of suggested item names
@@ -204,7 +203,6 @@ export default function Stride() {
   const [lockerFilter, setLockerFilter] = useState("all");
   const [ready, setReady] = useState(false);
   const [customForm, setCustomForm] = useState(EMPTY_CUSTOM);
-  const [profileOpen, setProfileOpen] = useState(false);
   const [addModal, setAddModal] = useState(false);
   const [addMode, setAddMode] = useState("browse");
   const [dbSearch, setDbSearch] = useState("");
@@ -222,9 +220,6 @@ export default function Stride() {
     try {
       const savedLocker = localStorage.getItem("stride-v6-locker");
       if (savedLocker) setLocker(JSON.parse(savedLocker));
-      
-      const savedPersona = localStorage.getItem("stride-persona");
-      if (savedPersona) setPersona(savedPersona);
     } catch (e) {
       console.error("Storage error:", e);
     }
@@ -234,8 +229,7 @@ export default function Stride() {
     useEffect(() => {
         if (!ready) return;
         localStorage.setItem("stride-v6-locker", JSON.stringify(locker));
-        if (persona) localStorage.setItem("stride-persona", persona);
-      }, [locker, persona, ready]);
+      }, [locker, ready]);
 
   // Load photos from IndexedDB on mount
   useEffect(() => {
@@ -288,8 +282,6 @@ export default function Stride() {
   };
 
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2400); };
-  const savePersona = (p) => { setPersona(p); };
-
   const resetPhotoState = () => {
     setPhotoFile(null); setPhotoPreview(null); setShadeAnalysis(null); setAnalyzingPhoto(false);
   };
@@ -421,7 +413,7 @@ export default function Stride() {
 
   const selectAllWorn = () => {
     if (!suggestion?.items) return;
-    setWornSelections(new Set(suggestion.items.map(i=>i.item)));
+    setWornSelections(new Set(suggestion.items.filter(i=>i.item).map(i=>i.item)));
     setWornSaved(false);
   };
 
@@ -441,7 +433,6 @@ export default function Stride() {
     showToast(matched>0 ? `${matched} item${matched>1?"s":""} marked worn today ✓` : "No matching locker items found");
   };
 
-  const currentPersona = STYLE_PERSONAS.find(p=>p.id===persona);
   const lockerFiltered = lockerFilter==="all" ? locker : locker.filter(i=>i.type===lockerFilter);
   const dbFiltered = GEAR_DB.filter(i => {
     const q = dbSearch.toLowerCase();
@@ -450,9 +441,9 @@ export default function Stride() {
 
   const getSuggestion = async () => {
     setSuggesting(true); setSuggestion(null); setWornSelections(new Set()); setWornSaved(false); setView("suggest");
-    const ctx = buildContext(weather.temp, weather.wind, weather.humidity, activity, currentPersona, locker);
+    const ctx = buildContext(weather.temp, weather.wind, weather.humidity, activity, locker);
     const actInfo = ACTIVITY_TYPES.find(a=>a.id===activity);
-    const prompt = `Running fashion editor. Suggest a complete outfit using strict priority: 1) Climate 2) Color harmony 3) Style persona.
+    const prompt = `Running fashion editor. Suggest a complete outfit using strict priority: 1) Climate 2) Color harmony.
 
 FELT TEMP: ${ctx.felt}F (actual ${weather.temp}F) | Wind: ${weather.wind}mph | Humidity: ${weather.humidity}% | ${weather.condition}
 ACTIVITY: ${actInfo.label} — ${actInfo.desc}
@@ -460,17 +451,15 @@ ACTIVITY: ${actInfo.label} — ${actInfo.desc}
 CLIMATE RULES (satisfy first):
 ${ctx.climate.map(r=>`- ${r}`).join("\n")}
 
-COLOR: Neutrals (black/white/grey/navy/ecru/olive) pair with anything. Earth tones (rust/sage/moss/tan) cohesive. Balance bold with neutral. Honor locker color constraints before style.
-
-STYLE PERSONA: ${currentPersona.label} (${currentPersona.tag}) — preferred brands: ${currentPersona.brands.slice(0,2).join(", ")}. Apply only after climate and color are resolved.
+COLOR: Neutrals (black/white/grey/navy/ecru/olive) pair with anything. Earth tones (rust/sage/moss/tan) cohesive. Balance bold with neutral. Honor locker shade descriptions for coordination.
 
 LOCKER:
-${ctx.lockerLines.length>0 ? ctx.lockerLines.join("\n") : "Empty — suggest from persona brands"}
+${ctx.lockerLines.length>0 ? ctx.lockerLines.join("\n") : "Empty"}
 
-RULES: Prioritize locker items. Skip CLIMATE MISMATCH or WORN TODAY items. Always include shoes. Fill gaps from persona brands.
+RULES: ONLY suggest items from the LOCKER list above. Skip any item marked CLIMATE MISMATCH or WORN TODAY. Always include shoes. If a required climate category has no suitable item in the locker, set "item" to null and provide a "typeRecommendation" describing what type of gear to add (e.g. "lightweight running gloves", "moisture-wicking long sleeve base layer"). Never invent brand names or models not in the locker.
 
 JSON only:
-{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name","colorway":"colorway","why":"one sentence"},{"category":"Top","item":"brand+name","colorway":"colorway","why":"one sentence"},{"category":"Shoes","item":"brand+model","colorway":"colorway","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
+{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Shoes","item":"brand+model or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,messages:[{role:"user",content:prompt}]})});
       const d = await res.json();
@@ -560,10 +549,7 @@ JSON only:
                 <h1 className="pf" style={{fontSize:27,fontWeight:900,letterSpacing:"-0.02em",lineHeight:1}}>STRIDE</h1>
                 <p className="dm" style={{fontSize:9,letterSpacing:"0.22em",color:"#999",textTransform:"uppercase",marginTop:1}}>Running Wardrobe</p>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:12}}>
-                <span className="dm" style={{fontSize:11,color:"#999"}}>{locker.length} items</span>
-                <button className="nb" onClick={()=>setProfileOpen(true)} style={{border:"1px solid #ddd",borderRadius:"50%",width:27,height:27,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>⚙</button>
-              </div>
+              <span className="dm" style={{fontSize:11,color:"#999"}}>{locker.length} items</span>
             </div>
             <div className="rn" style={{marginTop:8}}/>
           </div>
@@ -627,16 +613,6 @@ JSON only:
               </div>
             </div>
 
-            {/* Persona compact */}
-            <div style={{marginBottom:16,background:"white",border:"1px solid #E8E4DF",padding:"11px 13px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:2}}>Style Persona</p>
-                <p className="dm" style={{fontSize:13,fontWeight:500}}>{currentPersona.label}</p>
-                <p className="dm" style={{fontSize:11,color:"#888"}}>{currentPersona.tag}</p>
-              </div>
-              <button onClick={()=>setProfileOpen(true)} className="btn-sm">Change</button>
-            </div>
-
             <button className="btn" onClick={getSuggestion} disabled={suggesting}>
               {suggesting ? "Styling your run…" : "Get Outfit Suggestion"}
             </button>
@@ -660,15 +636,32 @@ JSON only:
                         <button className="btn-sm" onClick={selectAllWorn}>Select All</button>
                       </div>
                       {suggestion.items?.map((item,i)=>{
-                        const selected = wornSelections.has(item.item);
+                        const isGap = !item.item;
+                        const selected = !isGap && wornSelections.has(item.item);
                         return (
-                          <div key={i} className={`si ${selected?"selected":""}`} onClick={()=>toggleWornSelection(item.item)}>
+                          <div key={i}
+                            className={`si ${selected?"selected":""}`}
+                            onClick={!isGap ? ()=>toggleWornSelection(item.item) : undefined}
+                            style={isGap ? {borderStyle:"dashed",opacity:.8,cursor:"default"} : {}}
+                          >
                             <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
-                              <div className={`check ${selected?"on":""}`}>{selected?"✓":""}</div>
+                              {isGap
+                                ? <div style={{width:20,height:20,border:"1.5px dashed #bbb",borderRadius:3,flexShrink:0,marginTop:1}}/>
+                                : <div className={`check ${selected?"on":""}`}>{selected?"✓":""}</div>
+                              }
                               <div style={{flex:1}}>
                                 <p className="dm" style={{fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",color:"#888",marginBottom:2}}>{item.category}</p>
-                                <p className="dm" style={{fontSize:13,fontWeight:500}}>{item.item}</p>
-                                <p className="dm" style={{fontSize:12,color:"#888"}}>{item.colorway}</p>
+                                {isGap ? (
+                                  <>
+                                    <p className="dm" style={{fontSize:12,fontWeight:600,color:"#C8A96E",letterSpacing:"0.04em",textTransform:"uppercase"}}>Not in locker</p>
+                                    <p className="dm" style={{fontSize:13,color:"#555",marginTop:1}}>{item.typeRecommendation}</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="dm" style={{fontSize:13,fontWeight:500}}>{item.item}</p>
+                                    <p className="dm" style={{fontSize:12,color:"#888"}}>{item.colorway}</p>
+                                  </>
+                                )}
                                 <p className="dm" style={{fontSize:11,color:"#aaa",marginTop:3,fontStyle:"italic"}}>{item.why}</p>
                               </div>
                             </div>
@@ -988,41 +981,6 @@ JSON only:
               <button className="btn2" style={{flex:1}} onClick={()=>{setEditingItem(null);resetPhotoState();}}>Cancel</button>
               <button className="btn" style={{flex:1}} disabled={analyzingPhoto} onClick={saveEdit}>Save</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* PROFILE PANEL */}
-      {profileOpen && (
-        <div className="side-overlay" onClick={()=>setProfileOpen(false)}>
-          <div className="side" onClick={e=>e.stopPropagation()}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div><div className="rt" style={{width:26,marginBottom:4}}/><h2 className="pf" style={{fontSize:18,fontWeight:700}}>Profile</h2></div>
-              <button className="nb" onClick={()=>setProfileOpen(false)} style={{fontSize:20,color:"#888",lineHeight:1}}>×</button>
-            </div>
-            <div style={{background:"#F0EDE8",padding:"10px 12px",marginBottom:16}}>
-              <p className="dm" style={{fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",color:"#888",marginBottom:6}}>Suggestion Priority</p>
-              {[["1","Climate","Temp, wind, humidity, effort","pb1"],["2","Color Harmony","Cohesive colorways from locker","pb2"],["3","Style Persona","Brand and aesthetic preference","pb3"]].map(([n,t,d,c])=>(
-                <div key={n} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:6}}>
-                  <span className={`pb ${c}`}>{n}</span>
-                  <div><p className="dm" style={{fontSize:12,fontWeight:500}}>{t}</p><p className="dm" style={{fontSize:11,color:"#888"}}>{d}</p></div>
-                </div>
-              ))}
-            </div>
-            <p className="dm" style={{fontSize:10,letterSpacing:"0.16em",textTransform:"uppercase",color:"#888",marginBottom:10}}>Style Persona</p>
-            {STYLE_PERSONAS.map(p=>(
-              <button key={p.id} className={`pc ${persona===p.id?"on":""}`} onClick={()=>savePersona(p.id)}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                  <div><span className="ptag">{p.tag}</span><div className="dm" style={{fontSize:12,fontWeight:500}}>{p.label}</div><div className="dm" style={{fontSize:11,opacity:.6,marginTop:1}}>{p.description}</div></div>
-                  {persona===p.id&&<span style={{fontSize:14,flexShrink:0,marginLeft:8}}>✓</span>}
-                </div>
-              </button>
-            ))}
-            <div className="rn" style={{margin:"18px 0 12px"}}/>
-            <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#aaa",marginBottom:6}}>Coming Soon</p>
-            {["Colorblindness type","Run-hot / run-cold tendency","Home location for auto-weather","Training app integration"].map(i=>(
-              <p key={i} className="dm" style={{fontSize:12,color:"#bbb",marginBottom:4,paddingLeft:3}}>· {i}</p>
-            ))}
           </div>
         </div>
       )}
