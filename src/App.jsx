@@ -215,32 +215,67 @@ export default function Stride() {
   const [lockerPhotos, setLockerPhotos] = useState(new Map());
   const [editingItem, setEditingItem] = useState(null);
 
-// Persistence - Web Standard Version
+// Persistence — server is source of truth, localStorage is offline fallback
   useEffect(() => {
-    try {
-      const savedLocker = localStorage.getItem("stride-v6-locker");
-      if (savedLocker) setLocker(JSON.parse(savedLocker));
-    } catch (e) {
-      console.error("Storage error:", e);
-    }
-    setReady(true);
+    (async () => {
+      try {
+        const res = await fetch('/api/locker');
+        const serverData = await res.json();
+        if (serverData && serverData.length > 0) {
+          setLocker(serverData);
+        } else {
+          // Server empty — migrate from localStorage
+          const saved = localStorage.getItem("stride-v6-locker");
+          if (saved) {
+            const items = JSON.parse(saved);
+            setLocker(items);
+            fetch('/api/locker', { method:'POST', headers:{'Content-Type':'application/json'}, body: saved }).catch(()=>{});
+          }
+        }
+      } catch {
+        // Server unreachable — fall back to localStorage
+        try {
+          const saved = localStorage.getItem("stride-v6-locker");
+          if (saved) setLocker(JSON.parse(saved));
+        } catch {}
+      }
+      setReady(true);
+    })();
   }, []);
 
-    useEffect(() => {
-        if (!ready) return;
-        localStorage.setItem("stride-v6-locker", JSON.stringify(locker));
-      }, [locker, ready]);
+  useEffect(() => {
+    if (!ready) return;
+    const json = JSON.stringify(locker);
+    localStorage.setItem("stride-v6-locker", json);
+    fetch('/api/locker', { method:'POST', headers:{'Content-Type':'application/json'}, body: json }).catch(()=>{});
+  }, [locker, ready]);
 
-  // Load photos from IndexedDB on mount
+  // Load photos on mount — server is source of truth, IndexedDB is offline fallback
   useEffect(() => {
     if (!ready) return;
     (async () => {
       const map = new Map();
       for (const item of locker) {
         try {
-          const blob = await getPhoto(item.lockerId);
-          if (blob) map.set(item.lockerId, URL.createObjectURL(blob));
-        } catch(e) {}
+          const serverRes = await fetch(`/api/photos/${item.lockerId}`);
+          if (serverRes.ok) {
+            const blob = await serverRes.blob();
+            map.set(item.lockerId, URL.createObjectURL(blob));
+            savePhoto(item.lockerId, blob).catch(()=>{}); // cache locally for offline
+          } else {
+            // Not on server — try IndexedDB and migrate up
+            const blob = await getPhoto(item.lockerId);
+            if (blob) {
+              map.set(item.lockerId, URL.createObjectURL(blob));
+              fetch(`/api/photos/${item.lockerId}`, { method:'POST', body: blob }).catch(()=>{});
+            }
+          }
+        } catch {
+          try {
+            const blob = await getPhoto(item.lockerId);
+            if (blob) map.set(item.lockerId, URL.createObjectURL(blob));
+          } catch {}
+        }
       }
       setLockerPhotos(map);
     })();
@@ -300,6 +335,7 @@ export default function Stride() {
     ));
     if (photoFile) {
       await savePhoto(editingItem.lockerId, photoFile);
+      fetch(`/api/photos/${editingItem.lockerId}`, { method:'POST', body: photoFile }).catch(()=>{});
       const url = URL.createObjectURL(photoFile);
       setLockerPhotos(prev => new Map(prev).set(editingItem.lockerId, url));
     }
@@ -358,6 +394,7 @@ export default function Stride() {
     setLocker(prev => [...prev, {...item, colorway:cw, lockerId, shadeDescription: shadeAnalysis||null}]);
     if (photoFile) {
       await savePhoto(lockerId, photoFile);
+      fetch(`/api/photos/${lockerId}`, { method:'POST', body: photoFile }).catch(()=>{});
       const url = URL.createObjectURL(photoFile);
       setLockerPhotos(prev => new Map(prev).set(lockerId, url));
     }
@@ -375,6 +412,7 @@ export default function Stride() {
     setLocker(prev => [...prev, newItem]);
     if (photoFile) {
       await savePhoto(lockerId, photoFile);
+      fetch(`/api/photos/${lockerId}`, { method:'POST', body: photoFile }).catch(()=>{});
       const url = URL.createObjectURL(photoFile);
       setLockerPhotos(prev => new Map(prev).set(lockerId, url));
     }
