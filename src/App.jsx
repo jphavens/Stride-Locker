@@ -193,6 +193,7 @@ export default function Stride() {
   const [wxStatus, setWxStatus] = useState("idle"); // idle | loading | ok | error
   const [activity, setActivity] = useState("easy");
   const [suggestion, setSuggestion] = useState(null);
+  const [suggestionMeta, setSuggestionMeta] = useState(null);
   const [suggesting, setSuggesting] = useState(false);
   // worn selections on suggestion screen — set of suggested item names
   const [wornSelections, setWornSelections] = useState(new Set());
@@ -248,6 +249,19 @@ export default function Stride() {
     localStorage.setItem("stride-v6-locker", json);
     fetch('/api/locker', { method:'POST', headers:{'Content-Type':'application/json'}, body: json }).catch(()=>{});
   }, [locker, ready]);
+
+  // Hydrate last suggestion from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("stride-last-suggestion-v1");
+      if (!raw) return;
+      const blob = JSON.parse(raw);
+      if (blob?.suggestion?.items?.length) {
+        setSuggestion(blob.suggestion);
+        setSuggestionMeta(blob.meta);
+      }
+    } catch {}
+  }, []);
 
   // Load photos on mount — server is source of truth, IndexedDB is offline fallback
   useEffect(() => {
@@ -316,6 +330,7 @@ export default function Stride() {
   };
 
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2400); };
+  const dismissLastLook = () => { setSuggestion(null); setSuggestionMeta(null); localStorage.removeItem("stride-last-suggestion-v1"); };
   const resetPhotoState = () => {
     setPhotoFile(null); setPhotoPreview(null); setShadeAnalysis(null); setAnalyzingPhoto(false);
   };
@@ -518,7 +533,11 @@ Respond with JSON only (no markdown fences):
       if (!res.ok) throw new Error(d.error?.message || `API error ${res.status}`);
       if (d.stop_reason === "max_tokens") console.warn("Outfit call hit max_tokens");
       const txt = d.content?.find(b=>b.type==="text")?.text||"";
-      setSuggestion(JSON.parse(txt.replace(/```json|```/g,"").trim()));
+      const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+      const meta = {temp:weather.temp,wind:weather.wind,humidity:weather.humidity,condition:weather.condition,activity,felt:ctx.felt,ts:Date.now()};
+      setSuggestion(parsed);
+      setSuggestionMeta(meta);
+      try { localStorage.setItem("stride-last-suggestion-v1", JSON.stringify({suggestion:parsed,meta})); } catch {}
     } catch(e) { console.error("Outfit suggestion failed:", e); setSuggestion({error:true, message: e.message}); }
     setSuggesting(false);
   };
@@ -671,6 +690,18 @@ Respond with JSON only (no markdown fences):
               {suggesting ? "Styling your run…" : "Get Outfit Suggestion"}
             </button>
 
+            {/* Last look card — home view only */}
+            {view==="home" && suggestion && !suggestion.error && suggestionMeta && (
+              <div className="card" style={{marginTop:10,position:"relative"}} onClick={()=>setView("suggest")}>
+                <p className="dm" style={{fontSize:9,letterSpacing:"0.16em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Last Look</p>
+                <p className="pf" style={{fontSize:16,fontWeight:700,fontStyle:"italic",lineHeight:1.2,marginBottom:5}}>{suggestion.headline}</p>
+                <p className="dm" style={{fontSize:11,color:"#aaa"}}>
+                  {new Date(suggestionMeta.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} · {suggestionMeta.temp}°F · {ACTIVITY_TYPES.find(a=>a.id===suggestionMeta.activity)?.label||suggestionMeta.activity}
+                </p>
+                <button className="nb" onClick={e=>{e.stopPropagation();dismissLastLook();}} style={{position:"absolute",top:10,right:12,color:"#bbb",fontSize:18,lineHeight:1}}>×</button>
+              </div>
+            )}
+
             {/* Suggestion output */}
             {view==="suggest" && (
               <div style={{marginTop:24}}>
@@ -679,6 +710,12 @@ Respond with JSON only (no markdown fences):
 
                 {suggestion&&!suggestion.error&&(
                   <div className="fade">
+                    {suggestionMeta && (() => {
+                      const stale = new Date(suggestionMeta.ts).toDateString()!==TODAY || Math.abs(weather.temp-suggestionMeta.temp)>8 || activity!==suggestionMeta.activity;
+                      return stale
+                        ? <p className="dm" style={{fontSize:11,color:"#C8A96E",marginBottom:12}}>From earlier · conditions have shifted · tap Suggest Again to refresh.</p>
+                        : <p className="dm" style={{fontSize:11,color:"#aaa",marginBottom:12}}>{new Date(suggestionMeta.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})} · {suggestionMeta.temp}°F {suggestionMeta.condition}</p>;
+                    })()}
                     <p className="dm" style={{fontSize:10,letterSpacing:"0.16em",textTransform:"uppercase",color:"#888",marginBottom:5}}>Today's Look</p>
                     <h2 className="pf" style={{fontSize:23,fontWeight:700,fontStyle:"italic",marginBottom:4,lineHeight:1.2}}>{suggestion.headline}</h2>
                     <p className="dm" style={{fontSize:12,color:"#888",marginBottom:16,fontStyle:"italic"}}>{suggestion.weatherSummary}</p>
