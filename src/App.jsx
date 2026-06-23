@@ -178,10 +178,9 @@ function buildContext(temp, wind, humidity, activity, locker) {
   if (humidity>78) climate.push("REQUIRED: moisture-wicking only");
   if (activity==="long") climate.push("CONSIDER: pockets, anti-chafe fabrics");
   const lockerLines = locker.map(item => {
-    const ok = item.warmthMin<=temp && item.warmthMax>=temp;
     const worn = item.wornToday===TODAY?" [WORN TODAY — avoid repeating]":"";
     const shade = item.shadeDescription ? ` | Shade: ${item.shadeDescription}` : "";
-    return `${item.brand} ${item.name} (${item.colorway})${shade}${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type}${ok?"":"  ⚠ CLIMATE MISMATCH"}${worn}${item.isCustom?" [custom]":""}`;
+    return `${item.brand} ${item.name} (${item.colorway})${shade}${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type} | rated ${item.warmthMin}–${item.warmthMax}°F${worn}${item.isCustom?" [custom]":""}`;
   });
   return {felt,climate,lockerLines};
 }
@@ -357,8 +356,8 @@ export default function Stride() {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 150,
+        model: "claude-opus-4-8",
+        max_tokens: 300,
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
           { type: "text", text: "Describe the exact shade and color of this running gear in 1-2 precise sentences. Be specific about tone (e.g., 'deep navy with slight purple undertones', not just 'blue'). Help a colorblind person coordinate outfits." }
@@ -367,7 +366,8 @@ export default function Stride() {
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.error?.message || `API error ${res.status}`);
-    const text = d.content?.[0]?.text?.trim();
+    if (d.stop_reason === "max_tokens") console.warn("Photo/shade call hit max_tokens");
+    const text = d.content?.find(b=>b.type==="text")?.text?.trim();
     if (!text) throw new Error("Empty response from model");
     return text;
   };
@@ -481,29 +481,45 @@ export default function Stride() {
     setSuggesting(true); setSuggestion(null); setWornSelections(new Set()); setWornSaved(false); setView("suggest");
     const ctx = buildContext(weather.temp, weather.wind, weather.humidity, activity, locker);
     const actInfo = ACTIVITY_TYPES.find(a=>a.id===activity);
-    const prompt = `Running fashion editor. Suggest a complete outfit using strict priority: 1) Climate 2) Color harmony.
+    const prompt = `You are a running outfit editor. Pick one complete outfit from the locker below.
 
-FELT TEMP: ${ctx.felt}F (actual ${weather.temp}F) | Wind: ${weather.wind}mph | Humidity: ${weather.humidity}% | ${weather.condition}
+CONDITIONS: Felt temp ${ctx.felt}°F (actual ${weather.temp}°F) | Wind: ${weather.wind} mph | Humidity: ${weather.humidity}% | ${weather.condition}
 ACTIVITY: ${actInfo.label} — ${actInfo.desc}
 
-CLIMATE RULES (satisfy first):
+CLIMATE GUIDANCE (reason against these — not hard rules):
 ${ctx.climate.map(r=>`- ${r}`).join("\n")}
+Prefer gear appropriate for the felt temp and activity. You MAY use an item rated outside today's range when effort or layering justifies it — reason about it.
 
-COLOR: Neutrals (black/white/grey/navy/ecru/olive) pair with anything. Earth tones (rust/sage/moss/tan) cohesive. Balance bold with neutral. Honor locker shade descriptions for coordination.
+ACTIVITY STYLE:
+- workout/race → minimal and breathable; when cold, prefer a thin compression base layer under a light short over full tights
+- easy → comfort and warmth fine
+- long → coverage, pockets, anti-chafe fabrics
 
-LOCKER:
+LAYERING: You may add optional base-layer rows (e.g. "Base Layer — Bottom", "Base Layer — Top") before the main Bottom/Top rows when layering makes sense for the conditions and activity. Use the same item object shape.
+
+COLOR: Neutrals (black/white/grey/navy/ecru/olive) pair with anything. Earth tones (rust/sage/moss/tan) are cohesive. Balance bold with neutral. Honor shade descriptions for coordination.
+
+LOCKER (warmth ratings are guidance for reasoning):
 ${ctx.lockerLines.length>0 ? ctx.lockerLines.join("\n") : "Empty"}
 
-RULES: ONLY suggest items from the LOCKER list above. Skip any item marked CLIMATE MISMATCH or WORN TODAY. Always include Bottom, Top, and Shoes. Add accessory categories (Gloves, Hat, etc.) whenever climate rules list them as REQUIRED or CONSIDER — REQUIRED accessories must always appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item. If any item has no suitable locker match, set "item" to null and provide a "typeRecommendation" describing what type of gear to add. Never invent brand names or models not in the locker.
+RULES:
+- ONLY suggest items from the LOCKER list above.
+- Strongly avoid any item marked [WORN TODAY — avoid repeating] unless it is the only sensible option.
+- Always include Bottom, Top, and Shoes.
+- Add accessory categories (Gloves, Hat, etc.) whenever climate guidance lists them as REQUIRED or CONSIDER — REQUIRED accessories must appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item.
+- If no suitable locker item exists for a slot, set "item" to null and provide a "typeRecommendation".
+- Never invent brand names or models not in the locker.
 
-JSON only:
-{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Shoes","item":"brand+model or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Gloves","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
+Respond with JSON only (no markdown fences):
+{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Shoes","item":"brand+model or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]})});
+      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-opus-4-8",max_tokens:2000,messages:[{role:"user",content:prompt}]})});
       const d = await res.json();
+      if (!res.ok) throw new Error(d.error?.message || `API error ${res.status}`);
+      if (d.stop_reason === "max_tokens") console.warn("Outfit call hit max_tokens");
       const txt = d.content?.find(b=>b.type==="text")?.text||"";
       setSuggestion(JSON.parse(txt.replace(/```json|```/g,"").trim()));
-    } catch(e) { setSuggestion({error:true}); }
+    } catch(e) { console.error("Outfit suggestion failed:", e); setSuggestion({error:true, message: e.message}); }
     setSuggesting(false);
   };
 
@@ -730,7 +746,7 @@ JSON only:
                     <button className="btn2" onClick={getSuggestion}>Suggest Again</button>
                   </div>
                 )}
-                {suggestion?.error&&<p className="dm" style={{color:"#E03E3E",fontSize:13,marginTop:10}}>Something went wrong. Try again.</p>}
+                {suggestion?.error&&<p className="dm" style={{color:"#E03E3E",fontSize:13,marginTop:10}}>{suggestion.message || "Something went wrong. Try again."}</p>}
               </div>
             )}
           </div>
