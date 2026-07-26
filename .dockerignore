@@ -1,5 +1,7 @@
 node_modules
+.git
+data
 .env.local
 .env*.local
-data/
-dist/
+*.bak
+dist
