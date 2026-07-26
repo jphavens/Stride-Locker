@@ -449,6 +449,7 @@ export default function Stride() {
   const removeFromLocker = async (id) => {
     setLocker(prev => prev.filter(i=>i.lockerId!==id));
     await deletePhoto(id);
+    fetch(`/api/photos/${id}`, { method:'DELETE' }).catch(()=>{});
     setLockerPhotos(prev => { const m = new Map(prev); m.delete(id); return m; });
   };
 

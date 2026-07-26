@@ -33,7 +33,7 @@ export default defineConfig({
           } else { res.writeHead(405); res.end() }
         })
 
-        // Photos — GET /api/photos/:lockerId, POST /api/photos/:lockerId
+        // Photos — GET /api/photos/:lockerId, POST /api/photos/:lockerId, DELETE /api/photos/:lockerId
         server.middlewares.use('/api/photos', (req, res) => {
           const lockerId = req.url.slice(1) // strip leading '/'
           if (!lockerId) { res.writeHead(400); res.end(); return }
@@ -57,6 +57,12 @@ export default defineConfig({
                 res.end(JSON.stringify({ ok: true }))
               } catch (e) { res.writeHead(500); res.end(e.message) }
             })
+          } else if (req.method === 'DELETE') {
+            try {
+              if (fs.existsSync(file)) fs.unlinkSync(file)
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ ok: true }))
+            } catch (e) { res.writeHead(500); res.end(e.message) }
           } else { res.writeHead(405); res.end() }
         })
       }
