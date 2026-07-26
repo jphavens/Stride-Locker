@@ -95,9 +95,8 @@ const GEAR_DB = [
 ];
 
 const TYPE_LABELS = { "shorts":"Shorts","tights":"Tights","tank":"Tank / Singlet","top-ss":"Short Sleeve","top-ls":"Long Sleeve","midlayer":"Midlayer","jacket":"Jacket","vest":"Vest","hat":"Hat / Cap","gloves":"Gloves","socks":"Socks","shoes":"Shoes" };
-const WARMTH_RANGES = [{label:"Any temp",min:0,max:95},{label:"Cold (under 40°F)",min:0,max:40},{label:"Cool (40–55°F)",min:40,max:55},{label:"Mild (55–65°F)",min:55,max:65},{label:"Warm (65°F+)",min:65,max:95}];
 const ACTIVITY_TYPES = [{id:"easy",label:"Easy Run",icon:"◦",desc:"Recovery / conversational pace"},{id:"workout",label:"Workout",icon:"◈",desc:"Tempo, intervals, or fartlek"},{id:"long",label:"Long Run",icon:"◉",desc:"Distance — 60+ minutes"},{id:"race",label:"Race",icon:"◎",desc:"All out effort"}];
-const EMPTY_CUSTOM = {brand:"",name:"",type:"shorts",colorway:"",warmthRange:0,notes:""};
+const EMPTY_CUSTOM = {brand:"",name:"",type:"shorts",colorway:"",warmthMin:40,warmthMax:90,notes:""};
 const TODAY = new Date().toDateString();
 
 // ─── INDEXED DB (Photo Storage) ───────────────────────────────────────────────
@@ -214,6 +213,7 @@ export default function Stride() {
   const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
   const [lockerPhotos, setLockerPhotos] = useState(new Map());
   const [editingItem, setEditingItem] = useState(null);
+  const [editForm, setEditForm] = useState(EMPTY_CUSTOM);
 
 // Persistence — server is source of truth, localStorage is offline fallback
   useEffect(() => {
@@ -337,6 +337,15 @@ export default function Stride() {
 
   const openEditModal = (item) => {
     setEditingItem(item);
+    setEditForm({
+      brand: item.brand || "",
+      name: item.name || "",
+      type: item.type,
+      colorway: item.colorway || "",
+      notes: item.notes || "",
+      warmthMin: item.warmthMin,
+      warmthMax: item.warmthMax,
+    });
     setShadeAnalysis(item.shadeDescription || null);
     setPhotoFile(null);
     setAnalyzingPhoto(false);
@@ -344,8 +353,9 @@ export default function Stride() {
   };
 
   const saveEdit = async () => {
+    const trimmedForm = {...editForm, brand:editForm.brand.trim(), name:editForm.name.trim(), colorway:editForm.colorway.trim(), notes:editForm.notes.trim()};
     setLocker(prev => prev.map(i =>
-      i.lockerId === editingItem.lockerId ? {...i, shadeDescription: shadeAnalysis || null} : i
+      i.lockerId === editingItem.lockerId ? {...i, ...trimmedForm, shadeDescription: shadeAnalysis || null} : i
     ));
     if (photoFile) {
       await savePhoto(editingItem.lockerId, photoFile);
@@ -420,10 +430,9 @@ export default function Stride() {
 
   const addCustom = async () => {
     if (!customForm.brand||!customForm.name||!customForm.colorway) return;
-    const range = WARMTH_RANGES[customForm.warmthRange];
     const ts = Date.now();
     const lockerId = `c-${ts}-${Math.random()}`;
-    const newItem = { id:`c-${ts}`, lockerId, brand:customForm.brand.trim(), name:customForm.name.trim(), type:customForm.type, colorway:customForm.colorway.trim(), notes:customForm.notes.trim(), warmthMin:range.min, warmthMax:range.max, persona:[], isCustom:true, shadeDescription: shadeAnalysis||null };
+    const newItem = { id:`c-${ts}`, lockerId, brand:customForm.brand.trim(), name:customForm.name.trim(), type:customForm.type, colorway:customForm.colorway.trim(), notes:customForm.notes.trim(), warmthMin:customForm.warmthMin, warmthMax:customForm.warmthMax, persona:[], isCustom:true, shadeDescription: shadeAnalysis||null };
     setLocker(prev => [...prev, newItem]);
     if (photoFile) {
       await savePhoto(lockerId, photoFile);
@@ -958,11 +967,15 @@ Respond with JSON only (no markdown fences):
                     {Object.entries(TYPE_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
-                <div>
-                  <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Best Worn In</p>
-                  <select className="inp" value={customForm.warmthRange} onChange={e=>setCustomForm(f=>({...f,warmthRange:Number(e.target.value)}))}>
-                    {WARMTH_RANGES.map((r,i)=><option key={i} value={i}>{r.label}</option>)}
-                  </select>
+                <div style={{display:"flex",gap:10}}>
+                  <div style={{flex:1}}>
+                    <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Min °F</p>
+                    <input className="inp" type="number" value={customForm.warmthMin} onChange={e=>setCustomForm(f=>({...f,warmthMin:Number(e.target.value)}))}/>
+                  </div>
+                  <div style={{flex:1}}>
+                    <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Max °F</p>
+                    <input className="inp" type="number" value={customForm.warmthMax} onChange={e=>setCustomForm(f=>({...f,warmthMax:Number(e.target.value)}))}/>
+                  </div>
                 </div>
                 <div>
                   <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:8}}>Photo for Shade Analysis <span style={{color:"#bbb",fontWeight:400,textTransform:"none",letterSpacing:0}}>(optional)</span></p>
@@ -986,7 +999,7 @@ Respond with JSON only (no markdown fences):
                     </div>
                   )}
                 </div>
-                <button className="btn" style={{marginTop:3}} disabled={!customForm.brand||!customForm.name||!customForm.colorway||analyzingPhoto} onClick={addCustom}>Add to Locker</button>
+                <button className="btn" style={{marginTop:3}} disabled={!customForm.brand||!customForm.name||!customForm.colorway||analyzingPhoto||customForm.warmthMin>=customForm.warmthMax} onClick={addCustom}>Add to Locker</button>
               </div>
             )}
           </div>
@@ -1048,6 +1061,28 @@ Respond with JSON only (no markdown fences):
               <button className="nb" onClick={()=>{setEditingItem(null);resetPhotoState();}} style={{fontSize:20,color:"#888"}}>×</button>
             </div>
             <div className="rn" style={{marginBottom:14}}/>
+            {[["Brand","brand"],["Item Name","name"],["Colorway","colorway"],["Notes","notes"]].map(([label,key])=>(
+              <div key={key} style={{marginBottom:10}}>
+                <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>{label}</p>
+                <input className="inp" value={editForm[key]} onChange={e=>setEditForm(f=>({...f,[key]:e.target.value}))}/>
+              </div>
+            ))}
+            <div style={{marginBottom:10}}>
+              <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Type</p>
+              <select className="inp" value={editForm.type} onChange={e=>setEditForm(f=>({...f,type:e.target.value}))}>
+                {Object.entries(TYPE_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              <div style={{flex:1}}>
+                <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Min °F</p>
+                <input className="inp" type="number" value={editForm.warmthMin} onChange={e=>setEditForm(f=>({...f,warmthMin:Number(e.target.value)}))}/>
+              </div>
+              <div style={{flex:1}}>
+                <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Max °F</p>
+                <input className="inp" type="number" value={editForm.warmthMax} onChange={e=>setEditForm(f=>({...f,warmthMax:Number(e.target.value)}))}/>
+              </div>
+            </div>
             <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:8}}>Photo & Shade Analysis</p>
             {!photoPreview ? (
               <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,border:"1.5px dashed #ddd",padding:"16px",cursor:"pointer",background:"white",marginBottom:16}}>
@@ -1070,7 +1105,7 @@ Respond with JSON only (no markdown fences):
             )}
             <div style={{display:"flex",gap:8}}>
               <button className="btn2" style={{flex:1}} onClick={()=>{setEditingItem(null);resetPhotoState();}}>Cancel</button>
-              <button className="btn" style={{flex:1}} disabled={analyzingPhoto} onClick={saveEdit}>Save</button>
+              <button className="btn" style={{flex:1}} disabled={analyzingPhoto||!editForm.brand||!editForm.name||!editForm.colorway||editForm.warmthMin>=editForm.warmthMax} onClick={saveEdit}>Save</button>
             </div>
           </div>
         </div>
