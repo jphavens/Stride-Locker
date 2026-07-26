@@ -99,6 +99,30 @@ const ACTIVITY_TYPES = [{id:"easy",label:"Easy Run",icon:"◦",desc:"Recovery / 
 const EMPTY_CUSTOM = {brand:"",name:"",type:"shorts",colorway:"",warmthMin:40,warmthMax:90,notes:""};
 const TODAY = new Date().toDateString();
 
+const OUTFIT_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    category: { type: "string", description: "e.g. Bottom, Top, Socks, Base Layer — Bottom, Gloves, Hat" },
+    item: { anyOf: [{type:"string"},{type:"null"}], description: "brand+name, or null if no locker item fits" },
+    colorway: { anyOf: [{type:"string"},{type:"null"}], description: "colorway, or null" },
+    typeRecommendation: { type: "string", description: "only present if item is null" },
+    why: { type: "string", description: "one sentence" }
+  },
+  required: ["category","item","colorway","why"],
+  additionalProperties: false
+};
+const OUTFIT_SUGGESTION_SCHEMA = {
+  type: "object",
+  properties: {
+    headline: { type: "string", description: "4-7 word editorial outfit name" },
+    items: { type: "array", items: OUTFIT_ITEM_SCHEMA },
+    stylistNote: { type: "string", description: "2-3 sentences: color story, climate logic, what makes it intentional" },
+    weatherSummary: { type: "string", description: "one sharp line on what to expect physically" }
+  },
+  required: ["headline","items","stylistNote","weatherSummary"],
+  additionalProperties: false
+};
+
 // ─── INDEXED DB (Photo Storage) ───────────────────────────────────────────────
 let _photoDB = null;
 const openPhotoDB = () => new Promise((resolve, reject) => {
@@ -534,17 +558,14 @@ RULES:
 - Add accessory categories (Gloves, Hat, etc.) whenever climate guidance lists them as REQUIRED or CONSIDER — REQUIRED accessories must appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item.
 - If no suitable locker item exists for a slot, set "item" to null and provide a "typeRecommendation".
 - Never invent brand names or models not in the locker.
-- Do not mention or reference shoes anywhere in the output — footwear is chosen separately and is out of scope for this suggestion.
-
-Respond with JSON only (no markdown fences):
-{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Socks","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
+- Do not mention or reference shoes anywhere in the output — footwear is chosen separately and is out of scope for this suggestion.`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-opus-4-8",max_tokens:4000,messages:[{role:"user",content:prompt}]})});
+      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-opus-4-8",max_tokens:4000,messages:[{role:"user",content:prompt}],output_config:{format:{type:"json_schema",schema:OUTFIT_SUGGESTION_SCHEMA}}})});
       const d = await res.json();
       if (!res.ok) throw new Error(d.error?.message || `API error ${res.status}`);
       if (d.stop_reason === "max_tokens") console.warn("Outfit call hit max_tokens");
       const txt = d.content?.find(b=>b.type==="text")?.text||"";
-      const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+      const parsed = JSON.parse(txt.trim());
       const meta = {temp:weather.temp,wind:weather.wind,humidity:weather.humidity,condition:weather.condition,activity,felt:ctx.felt,ts:Date.now()};
       setSuggestion(parsed);
       setSuggestionMeta(meta);
