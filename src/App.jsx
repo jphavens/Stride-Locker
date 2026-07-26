@@ -530,14 +530,14 @@ ${ctx.lockerLines.length>0 ? ctx.lockerLines.join("\n") : "Empty"}
 RULES:
 - ONLY suggest items from the LOCKER list above.
 - Strongly avoid any item marked [WORN TODAY — avoid repeating] unless it is the only sensible option.
-- Always include Bottom and Top.
+- Always include Bottom, Top, and Socks.
 - Add accessory categories (Gloves, Hat, etc.) whenever climate guidance lists them as REQUIRED or CONSIDER — REQUIRED accessories must appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item.
 - If no suitable locker item exists for a slot, set "item" to null and provide a "typeRecommendation".
 - Never invent brand names or models not in the locker.
 - Do not mention or reference shoes anywhere in the output — footwear is chosen separately and is out of scope for this suggestion.
 
 Respond with JSON only (no markdown fences):
-{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
+{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Socks","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-opus-4-8",max_tokens:4000,messages:[{role:"user",content:prompt}]})});
       const d = await res.json();
