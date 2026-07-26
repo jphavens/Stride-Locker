@@ -176,7 +176,7 @@ function buildContext(temp, wind, humidity, activity, locker) {
   if (wind>18) climate.push("REQUIRED: wind-blocking layer");
   if (humidity>78) climate.push("REQUIRED: moisture-wicking only");
   if (activity==="long") climate.push("CONSIDER: pockets, anti-chafe fabrics");
-  const lockerLines = locker.map(item => {
+  const lockerLines = locker.filter(item => item.type!=="shoes").map(item => {
     const worn = item.wornToday===TODAY?" [WORN TODAY — avoid repeating]":"";
     const shade = item.shadeDescription ? ` | Shade: ${item.shadeDescription}` : "";
     return `${item.brand} ${item.name} (${item.colorway})${shade}${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type} | rated ${item.warmthMin}–${item.warmthMax}°F${worn}${item.isCustom?" [custom]":""}`;
@@ -529,13 +529,14 @@ ${ctx.lockerLines.length>0 ? ctx.lockerLines.join("\n") : "Empty"}
 RULES:
 - ONLY suggest items from the LOCKER list above.
 - Strongly avoid any item marked [WORN TODAY — avoid repeating] unless it is the only sensible option.
-- Always include Bottom, Top, and Shoes.
+- Always include Bottom and Top.
 - Add accessory categories (Gloves, Hat, etc.) whenever climate guidance lists them as REQUIRED or CONSIDER — REQUIRED accessories must appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item.
 - If no suitable locker item exists for a slot, set "item" to null and provide a "typeRecommendation".
 - Never invent brand names or models not in the locker.
+- Do not mention or reference shoes anywhere in the output — footwear is chosen separately and is out of scope for this suggestion.
 
 Respond with JSON only (no markdown fences):
-{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Shoes","item":"brand+model or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
+{"headline":"4-7 word editorial outfit name","items":[{"category":"Bottom","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"},{"category":"Top","item":"brand+name or null","colorway":"colorway or null","typeRecommendation":"only present if item is null","why":"one sentence"}],"stylistNote":"2-3 sentences: color story, climate logic, what makes it intentional.","weatherSummary":"One sharp line on what to expect physically."}`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-opus-4-8",max_tokens:4000,messages:[{role:"user",content:prompt}]})});
       const d = await res.json();
