@@ -149,7 +149,27 @@ function readBody(req) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const SHARED_KEY = env.VITE_STRIDE_SHARED_KEY
   const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY
+
+  // Rejects requests whose x-stride-key header doesn't match VITE_STRIDE_SHARED_KEY.
+  // Note: this key ships in the client bundle (the SPA has to attach it to its own
+  // requests), so it is NOT secret from a human using the app with devtools open.
+  // What it buys us: it stops opportunistic/automated hits that never load the real
+  // page, and it's rotatable independently of the real Anthropic key.
+  function requireAuth(req, res) {
+    if (req.headers['x-stride-key'] !== SHARED_KEY) {
+      console.error(`[auth] rejected ${req.method} ${req.url} @ ${new Date().toISOString()}`)
+      res.writeHead(401, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'unauthorized' }))
+      return true
+    }
+    return false
+  }
+
+  function logResult(req, ok) {
+    console.log(`[api] ${req.method} ${req.url} ${ok ? 'ok' : 'fail'} @ ${new Date().toISOString()}`)
+  }
 
   return {
     plugins: [
@@ -159,11 +179,13 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           // Locker items — GET to load, POST to save
           server.middlewares.use('/api/locker', (req, res) => {
+            if (requireAuth(req, res)) return
             res.setHeader('Content-Type', 'application/json')
             if (req.method === 'GET') {
               try {
                 res.end(fs.existsSync(LOCKER_FILE) ? fs.readFileSync(LOCKER_FILE, 'utf-8') : 'null')
-              } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+                logResult(req, true)
+              } catch (e) { console.error('[api] GET /api/locker failed:', e); res.writeHead(500); res.end(JSON.stringify({ error: e.message })); logResult(req, false) }
             } else if (req.method === 'POST') {
               let body = ''
               req.on('data', chunk => body += chunk)
@@ -172,13 +194,15 @@ export default defineConfig(({ mode }) => {
                   fs.mkdirSync(DATA_DIR, { recursive: true })
                   fs.writeFileSync(LOCKER_FILE, body, 'utf-8')
                   res.end(JSON.stringify({ ok: true }))
-                } catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })) }
+                  logResult(req, true)
+                } catch (e) { console.error('[api] POST /api/locker failed:', e); res.writeHead(500); res.end(JSON.stringify({ error: e.message })); logResult(req, false) }
               })
             } else { res.writeHead(405); res.end() }
           })
 
           // Photos — GET /api/photos/:lockerId, POST /api/photos/:lockerId, DELETE /api/photos/:lockerId
           server.middlewares.use('/api/photos', (req, res) => {
+            if (requireAuth(req, res)) return
             const lockerId = req.url.slice(1) // strip leading '/'
             if (!lockerId) { res.writeHead(400); res.end(); return }
             const file = path.join(PHOTOS_DIR, `${lockerId}.jpg`)
@@ -189,7 +213,8 @@ export default defineConfig(({ mode }) => {
                   res.setHeader('Content-Type', 'image/jpeg')
                   res.end(fs.readFileSync(file))
                 } else { res.writeHead(404); res.end() }
-              } catch (e) { res.writeHead(500); res.end(e.message) }
+                logResult(req, true)
+              } catch (e) { console.error('[api] GET /api/photos failed:', e); res.writeHead(500); res.end(e.message); logResult(req, false) }
             } else if (req.method === 'POST') {
               const chunks = []
               req.on('data', chunk => chunks.push(chunk))
@@ -199,20 +224,23 @@ export default defineConfig(({ mode }) => {
                   fs.writeFileSync(file, Buffer.concat(chunks))
                   res.setHeader('Content-Type', 'application/json')
                   res.end(JSON.stringify({ ok: true }))
-                } catch (e) { res.writeHead(500); res.end(e.message) }
+                  logResult(req, true)
+                } catch (e) { console.error('[api] POST /api/photos failed:', e); res.writeHead(500); res.end(e.message); logResult(req, false) }
               })
             } else if (req.method === 'DELETE') {
               try {
                 if (fs.existsSync(file)) fs.unlinkSync(file)
                 res.setHeader('Content-Type', 'application/json')
                 res.end(JSON.stringify({ ok: true }))
-              } catch (e) { res.writeHead(500); res.end(e.message) }
+                logResult(req, true)
+              } catch (e) { console.error('[api] DELETE /api/photos failed:', e); res.writeHead(500); res.end(e.message); logResult(req, false) }
             } else { res.writeHead(405); res.end() }
           })
 
           // Outfit suggestion — server builds climate context + prompt, calls Anthropic,
           // sanitizes the response, returns the same shape the client already expects.
           server.middlewares.use('/api/suggest', (req, res) => {
+            if (requireAuth(req, res)) return
             if (req.method !== 'POST') { res.writeHead(405); res.end(); return }
             res.setHeader('Content-Type', 'application/json')
             readBody(req).then(async (raw) => {
@@ -231,14 +259,18 @@ export default defineConfig(({ mode }) => {
                 const txt = d.content?.find(b => b.type === 'text')?.text || ''
                 const parsed = sanitizeTopLayering(JSON.parse(txt.trim()), locker)
                 res.end(JSON.stringify(parsed))
+                logResult(req, true)
               } catch (e) {
+                console.error('[api] POST /api/suggest failed:', e)
                 res.end(JSON.stringify({ error: true, message: e.message }))
+                logResult(req, false)
               }
             })
           })
 
           // Shade analysis — client sends the already-compressed JPEG as a raw body.
           server.middlewares.use('/api/shade', (req, res) => {
+            if (requireAuth(req, res)) return
             if (req.method !== 'POST') { res.writeHead(405); res.end(); return }
             res.setHeader('Content-Type', 'application/json')
             readBody(req).then(async (buf) => {
@@ -262,8 +294,11 @@ export default defineConfig(({ mode }) => {
                 const text = d.content?.find(b => b.type === 'text')?.text?.trim()
                 if (!text) throw new Error('Empty response from model')
                 res.end(JSON.stringify({ shadeDescription: text }))
+                logResult(req, true)
               } catch (e) {
+                console.error('[api] POST /api/shade failed:', e)
                 res.end(JSON.stringify({ error: e.message }))
+                logResult(req, false)
               }
             })
           })
