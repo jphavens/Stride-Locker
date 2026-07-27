@@ -13,8 +13,13 @@ Stride Locker is a "Digital Gear Closet" for runners. It solves the friction of 
 ### Weather → Outfit Flow
 - Fetches real-time weather via Open-Meteo API (geolocation)
 - Computes "felt temp" adjusted for activity effort (+15°F workout/race, -5°F easy)
-- `buildContext()` converts felt temp + wind + humidity into hard climate rules; **excludes shoes** from the locker lines it builds (footwear is out of scope for outfit suggestions — chosen separately)
-- `getSuggestion()` sends rules + full locker (minus shoes, with shade descriptions) to Claude for a JSON outfit response covering Bottom/Top/accessories only
+- `buildContext()` converts felt temp + wind + humidity into climate guidance (REQUIRED/CONSIDER lines) that the AI reasons against — not hard filters; the model can still pick an item rated outside today's range when layering or effort justifies it. It also surfaces each item's `notes` (free text) in the locker lines it builds, so anything the user wrote (e.g. "unlined") reaches the AI. **Excludes shoes** from the locker lines it builds (footwear is out of scope for outfit suggestions — chosen separately)
+- `getSuggestion()` sends the guidance + full locker (minus shoes, with shade descriptions and notes) to Claude for a JSON outfit response. Bottom, Top, and Socks are always required; accessory categories (Gloves, Hat, etc.) are added per climate guidance. The response is constrained to `OUTFIT_SUGGESTION_SCHEMA` via `output_config.format` (structured outputs), so parsing doesn't depend on the model producing well-formed freeform JSON.
+
+### Layering & Bottom-Category Reasoning
+- The AI may add a "Base Layer — Bottom" row alongside a Shorts "Bottom" row for two distinct reasons: **coverage/support** — an `underwear`-type item (compression underwear) paired under shorts at any temperature or activity, especially when the shorts' notes mention no liner/unlined — or **warmth** — a `tights`-type item worn under shorts on cooler days (roughly felt < 52°F).
+- On cold days (roughly felt < 52°F) the model weighs three options for the main Bottom rather than defaulting to tights: Pants alone (`pants`-type item, standalone), Tights alone, or Shorts + Tights layered for warmth.
+- Guardrails enforced in the prompt's RULES: an `underwear`-type item must never be the sole Bottom (only ever a base-layer row alongside a real Bottom); a `pants`-type item must never be used as a base layer.
 
 ### Locker Management
 - Track "worn today" status per item; AI avoids repeating worn items
@@ -78,10 +83,10 @@ vite.config.js  — locker-api middleware; allowedHosts restricted to the deploy
 ### AI Integration
 | Call | Model | Trigger | Purpose |
 |------|-------|---------|---------|
-| Outfit suggestion | `claude-opus-4-8` | "Get Outfit Suggestion" button | Full outfit JSON (Bottom/Top/accessories, no shoes) from locker + climate rules |
+| Outfit suggestion | `claude-opus-4-8` | "Get Outfit Suggestion" button | Full outfit JSON (Bottom/Top/Socks always, accessories per climate, no shoes) from locker + climate rules, schema-constrained via `output_config.format` |
 | Shade analysis | `claude-opus-4-8` | Photo captured at add or edit time | 1-2 sentence color description, stored on item |
 
-Both calls: `POST https://api.anthropic.com/v1/messages` with headers `x-api-key: VITE_ANTHROPIC_API_KEY` and `anthropic-version: 2023-06-01`. Model name drifts as it gets upgraded — grep `model:"` in `src/App.jsx` for ground truth rather than trusting this table blindly.
+Both calls: `POST https://api.anthropic.com/v1/messages` with headers `x-api-key: VITE_ANTHROPIC_API_KEY` and `anthropic-version: 2023-06-01`. Model name drifts as it gets upgraded — grep `model:"` in `src/App.jsx` for ground truth rather than trusting this table blindly. The outfit-suggestion call passes `output_config: {format: {type:"json_schema", schema: OUTFIT_SUGGESTION_SCHEMA}}` so the API guarantees schema-valid JSON server-side — no markdown-fence stripping or malformed-JSON fallback needed on the client.
 
 ### Navigation Views
 | View | Key | Notes |
