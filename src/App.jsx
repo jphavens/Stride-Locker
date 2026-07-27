@@ -2,14 +2,6 @@ import { useState, useEffect } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
-const STYLE_PERSONAS = [
-  { id:"realkeeper", label:"Real Keeper", tag:"Heritage · Collegiate", description:"Tracksmith, New Balance — timeless aesthetics, discipline, the amateur spirit of the sport", brands:["Tracksmith","New Balance","Brooks","Saucony"] },
-  { id:"fashion-pacer", label:"Fashion Pacer", tag:"Streetwear · Gorpcore", description:"Satisfy, Bandit, Norda — technical details as fashion statements, blurring sport and street", brands:["Satisfy","Bandit","Norda","Hoka"] },
-  { id:"precision", label:"Precision Performer", tag:"Technical · Minimalist", description:"On Running, Soar, Janji — industrial sophistication, performance-first with a clean edge", brands:["On Running","Soar","Janji","Adidas"] },
-  { id:"mindful", label:"Mindful Jogger", tag:"Expressive · Vibrant", description:"District Vision, NNormal, Rabbit — joyful palette, mindful movement, vibrant self-expression", brands:["District Vision","NNormal","Rabbit","Ciele"] },
-  { id:"trail-rebel", label:"Trail Rebel", tag:"Rugged · Mountain-to-City", description:"Salomon, La Sportiva, Patagonia — gorpcore authority, built for the mountain and the street", brands:["Salomon","La Sportiva","The North Face","Patagonia"] },
-];
-
 const GEAR_DB = [
   { id:"s1", brand:"Satisfy", name:"Justice Distance Shorts", type:"shorts", fabric:"Justice™", persona:["fashion-pacer","precision"], warmthMin:55, warmthMax:95, colorways:["Black","Aged White","Olive Drab"] },
   { id:"s2", brand:"Satisfy", name:"MothTech Muscle Shorts", type:"shorts", fabric:"MothTech™", persona:["fashion-pacer"], warmthMin:58, warmthMax:95, colorways:["Black","Off White","Moss"] },
@@ -179,6 +171,8 @@ export default function Stride() {
   const [suggestion, setSuggestion] = useState(null);
   const [suggestionMeta, setSuggestionMeta] = useState(null);
   const [suggesting, setSuggesting] = useState(false);
+  // row index (not category — labels aren't guaranteed unique) currently being swapped
+  const [swappingIndex, setSwappingIndex] = useState(null);
   // worn selections on suggestion screen — set of suggested item names
   const [wornSelections, setWornSelections] = useState(new Set());
   const [wornSaved, setWornSaved] = useState(false);
@@ -485,6 +479,43 @@ export default function Stride() {
     setSuggesting(false);
   };
 
+  // Swap a single suggestion row for a different pick — everything else stays locked.
+  const swapItem = async (rowIndex) => {
+    const row = suggestion?.items?.[rowIndex];
+    if (!row || !row.item || !suggestionMeta) return;
+    setSwappingIndex(rowIndex);
+    try {
+      const lockedItems = suggestion.items
+        .filter((it, i) => i !== rowIndex && it.item)
+        .map(it => ({ category: it.category, item: it.item, colorway: it.colorway }));
+      const res = await apiFetch("/api/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "swap",
+          temp: suggestionMeta.temp, wind: suggestionMeta.wind, humidity: suggestionMeta.humidity,
+          condition: suggestionMeta.condition, activity: suggestionMeta.activity,
+          locker, category: row.category, previousItem: { item: row.item, colorway: row.colorway }, lockedItems
+        })
+      });
+      const parsed = await res.json();
+      if (!res.ok) throw new Error(parsed.message || parsed.error || `API error ${res.status}`);
+      if (parsed.error) throw new Error(parsed.message);
+      if (parsed.noAlternative) { showToast(`No other ${row.category.toLowerCase()} option in your locker`); return; }
+      const items = suggestion.items.map((it, i) => i === rowIndex ? parsed : it);
+      const updated = { ...suggestion, items };
+      setSuggestion(updated);
+      try { localStorage.setItem("stride-last-suggestion-v1", JSON.stringify({suggestion:updated, meta:suggestionMeta})); } catch {}
+      setWornSelections(prev => {
+        if (!prev.has(row.item)) return prev;
+        const next = new Set(prev);
+        next.delete(row.item);
+        return next;
+      });
+    } catch(e) { console.error("Item swap failed:", e); showToast("Couldn't find a swap — try again"); }
+    finally { setSwappingIndex(null); }
+  };
+
   // ── Styles ──
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400;1,700&family=DM+Sans:wght@300;400;500&display=swap');
@@ -696,8 +727,20 @@ export default function Stride() {
                                     <p className="dm" style={{fontSize:12,color:"#888"}}>{item.colorway}</p>
                                   </>
                                 )}
-                                <p className="dm" style={{fontSize:11,color:"#aaa",marginTop:3,fontStyle:"italic"}}>{item.why}</p>
+                                {swappingIndex===i
+                                  ? <p className="dm pulse" style={{fontSize:11,color:"#aaa",marginTop:3,fontStyle:"italic"}}>Finding another option…</p>
+                                  : <p className="dm" style={{fontSize:11,color:"#aaa",marginTop:3,fontStyle:"italic"}}>{item.why}</p>
+                                }
                               </div>
+                              {!isGap && (
+                                <button
+                                  className="nb"
+                                  onClick={e=>{e.stopPropagation();swapItem(i);}}
+                                  disabled={swappingIndex!==null}
+                                  title="Swap this item"
+                                  style={{color:"#bbb",fontSize:13,lineHeight:1,flexShrink:0,opacity:swappingIndex!==null&&swappingIndex!==i?.4:1}}
+                                >↻</button>
+                              )}
                             </div>
                           </div>
                         );

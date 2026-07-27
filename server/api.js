@@ -66,18 +66,8 @@ const ACTIVITY_INFO = {
   race: { label:"Race", desc:"All out effort" },
 };
 
-function buildPrompt(ctx, activity, weather) {
-  const actInfo = ACTIVITY_INFO[activity] || { label: activity, desc: "" };
-  return `You are a running outfit editor. Pick one complete outfit from the locker below.
-
-CONDITIONS: Felt temp ${ctx.felt}°F (actual ${weather.temp}°F) | Wind: ${weather.wind} mph | Humidity: ${weather.humidity}% | ${weather.condition}
-ACTIVITY: ${actInfo.label} — ${actInfo.desc}
-
-CLIMATE GUIDANCE (reason against these — not hard rules):
-${ctx.climate.map(r=>`- ${r}`).join("\n")}
-Prefer gear appropriate for the felt temp and activity. You MAY use an item rated outside today's range when effort or layering justifies it — reason about it.
-
-ACTIVITY STYLE:
+function buildSharedGuidance(ctx) {
+  return `ACTIVITY STYLE:
 - workout/race → minimal and breathable; a short paired with compression underwear underneath is often preferred over full tights, even when cool
 - easy → comfort and warmth fine
 - long → coverage, pockets, anti-chafe fabrics
@@ -95,7 +85,21 @@ COLD BOTTOM CHOICE: On cooler days (roughly felt < 52°F), reason about three op
 (c) Bottom: Shorts + Base Layer — Bottom: Tights — shorts layered over tights for warmth (per WARMTH layering above)
 Weigh activity and felt temp when choosing; Pants and Tights-alone are equally valid options to Shorts+Tights-layered, not fallbacks.
 
-COLOR: Neutrals (black/white/grey/navy/ecru/olive) pair with anything. Earth tones (rust/sage/moss/tan) are cohesive. Balance bold with neutral. Honor shade descriptions for coordination.
+COLOR: Neutrals (black/white/grey/navy/ecru/olive) pair with anything. Earth tones (rust/sage/moss/tan) are cohesive. Balance bold with neutral. Honor shade descriptions for coordination.`;
+}
+
+function buildPrompt(ctx, activity, weather) {
+  const actInfo = ACTIVITY_INFO[activity] || { label: activity, desc: "" };
+  return `You are a running outfit editor. Pick one complete outfit from the locker below.
+
+CONDITIONS: Felt temp ${ctx.felt}°F (actual ${weather.temp}°F) | Wind: ${weather.wind} mph | Humidity: ${weather.humidity}% | ${weather.condition}
+ACTIVITY: ${actInfo.label} — ${actInfo.desc}
+
+CLIMATE GUIDANCE (reason against these — not hard rules):
+${ctx.climate.map(r=>`- ${r}`).join("\n")}
+Prefer gear appropriate for the felt temp and activity. You MAY use an item rated outside today's range when effort or layering justifies it — reason about it.
+
+${buildSharedGuidance(ctx)}
 
 LOCKER (warmth ratings are guidance for reasoning):
 ${ctx.lockerLines.length>0 ? ctx.lockerLines.join("\n") : "Empty"}
@@ -111,6 +115,41 @@ RULES:
 - A "pants"-type item is a standalone Bottom, not a base layer — never place it in a "Base Layer — Bottom" row, and do not pair Pants with a Tights base-layer row (redundant warmth). Pants may still be paired with an "underwear" base-layer row for coverage/support if the locker has one.
 - The Top item may only appear once in the outfit — never duplicate it under a different category name (e.g. "Base Layer — Top"). Any second warmth layer must be an "Outer Layer" row using a Midlayer or Vest item.
 - Do not mention or reference shoes anywhere in the output — footwear is chosen separately and is out of scope for this suggestion.`;
+}
+
+function buildSwapPrompt(ctx, activity, weather, category, previousItem, lockedItems) {
+  const actInfo = ACTIVITY_INFO[activity] || { label: activity, desc: "" };
+  return `You are a running outfit editor. The runner already has a complete outfit and wants a different option for ONE slot only. Pick a single replacement item from the locker below.
+
+CONDITIONS: Felt temp ${ctx.felt}°F (actual ${weather.temp}°F) | Wind: ${weather.wind} mph | Humidity: ${weather.humidity}% | ${weather.condition}
+ACTIVITY: ${actInfo.label} — ${actInfo.desc}
+
+CLIMATE GUIDANCE (reason against these — not hard rules):
+${ctx.climate.map(r=>`- ${r}`).join("\n")}
+Prefer gear appropriate for the felt temp and activity. You MAY use an item rated outside today's range when effort or layering justifies it — reason about it.
+
+${buildSharedGuidance(ctx)}
+
+LOCKED OUTFIT (do not change, do not reuse any of these locker items):
+${lockedItems.length>0 ? lockedItems.map(r=>`- ${r.category}: ${r.item} (${r.colorway})`).join("\n") : "None — every other slot is empty."}
+
+REPLACE THIS SLOT ONLY:
+- Category: ${category}
+- Currently: ${previousItem.item} (${previousItem.colorway}) — do not pick this item again, the runner wants something different.
+
+LOCKER (warmth ratings are guidance for reasoning):
+${ctx.lockerLines.length>0 ? ctx.lockerLines.join("\n") : "Empty"}
+
+RULES:
+- ONLY suggest an item from the LOCKER list above.
+- Never suggest the current item again, and never suggest an item already used in the LOCKED OUTFIT above.
+- Respect the same layering rules from above as they apply to this one slot (e.g. don't turn this into a second Top-category item, don't make an "underwear"-type item a standalone Bottom).
+- Keep the same "category" label as the slot being replaced unless the layering rules above require a different one.
+- Strongly avoid any item marked [WORN TODAY — avoid repeating] unless it is the only sensible option.
+- Never invent brand names or models not in the locker.
+- If no other suitable locker item exists for this slot, set "item" to null and provide a "typeRecommendation".
+- Do not mention or reference shoes — footwear is out of scope for this suggestion.
+- Return exactly one item object, not an array or a full outfit.`;
 }
 
 // Deterministic backstop: the model occasionally stacks two Top-category items
@@ -134,6 +173,20 @@ function sanitizeTopLayering(suggestion, locker) {
   const items = suggestion.items.filter(row => row === keeper || !isTopItem(row));
   console.warn("Stride: removed duplicate Top-category item(s) from AI suggestion", topRows.filter(r=>r!==keeper));
   return { ...suggestion, items };
+}
+
+// Same name-normalization findLockerType uses, applied before a swap result
+// is trusted — the model can still pick the same item back, reuse a locked
+// item, or reintroduce a second Top-type item despite the swap prompt's rules.
+function isInvalidSwap(newItem, previousItem, lockedItems, locker) {
+  if (!newItem || !newItem.item) return true;
+  const norm = s => (s||"").toLowerCase().replace(/[^a-z0-9]+/g,"");
+  if (norm(newItem.item) === norm(previousItem.item)) return true;
+  if (lockedItems.some(l => norm(l.item) === norm(newItem.item))) return true;
+  const topTypes = new Set(["top-ss","top-ls","tank"]);
+  const newType = findLockerType(newItem.item, locker);
+  if (topTypes.has(newType) && lockedItems.some(l => topTypes.has(findLockerType(l.item, locker)))) return true;
+  return false;
 }
 
 function readBody(req) {
@@ -232,8 +285,32 @@ export function createApiHandlers({ sharedKey, anthropicApiKey }) {
     res.setHeader('Content-Type', 'application/json')
     readBody(req).then(async (raw) => {
       try {
-        const { temp, wind, humidity, condition, activity, locker } = JSON.parse(raw.toString('utf-8'))
+        const body = JSON.parse(raw.toString('utf-8'))
+        const { temp, wind, humidity, condition, activity, locker } = body
         const ctx = buildContext(temp, wind, humidity, activity, locker)
+
+        if (body.mode === 'swap') {
+          const { category, previousItem, lockedItems } = body
+          const prompt = buildSwapPrompt(ctx, activity, { temp, wind, humidity, condition }, category, previousItem, lockedItems)
+          const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicApiKey, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 1000, messages: [{ role: 'user', content: prompt }], output_config: { format: { type: 'json_schema', schema: OUTFIT_ITEM_SCHEMA } } })
+          })
+          const d = await aiRes.json()
+          if (!aiRes.ok) throw new Error(d.error?.message || `API error ${aiRes.status}`)
+          if (d.stop_reason === 'max_tokens') console.warn('Swap call hit max_tokens')
+          const txt = d.content?.find(b => b.type === 'text')?.text || ''
+          const newItem = JSON.parse(txt.trim())
+          if (isInvalidSwap(newItem, previousItem, lockedItems, locker)) {
+            res.end(JSON.stringify({ noAlternative: true }))
+          } else {
+            res.end(JSON.stringify(newItem))
+          }
+          logResult(req, true)
+          return
+        }
+
         const prompt = buildPrompt(ctx, activity, { temp, wind, humidity, condition })
         const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
