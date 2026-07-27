@@ -1,12 +1,14 @@
 services:
   stride-locker:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_STRIDE_SHARED_KEY: ${VITE_STRIDE_SHARED_KEY}
     container_name: stride-locker
     ports:
       - "3005:5173"
     volumes:
-      - .:/app
-      - /app/node_modules
-    environment:
-      - WATCHPACK_POLLING=true
+      - ./data:/app/data
+    env_file:
+      - .env.local
     restart: unless-stopped
