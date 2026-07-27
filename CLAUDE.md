@@ -85,7 +85,6 @@ vite.config.js  — dev-only now: wires server/api.js handlers into configureSer
   shadeDescription: "...",           // AI-analyzed shade text (nullable)
   warmthMin: 52, warmthMax: 95,      // editable numeric range, °F
   fabric: "Veloce Blend",            // optional
-  persona: ["realkeeper"],           // legacy field on curated GEAR_DB items — NOT read by any current logic, purely inert. Don't wire it up without being asked; the persona/style-filter feature was intentionally removed.
   isCustom: true,                    // only on manual entries
   notes: "...",                      // optional, custom only
   wornToday: "Mon Apr 21 2026",      // TODAY string or null
