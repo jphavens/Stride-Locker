@@ -151,6 +151,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const SHARED_KEY = env.VITE_STRIDE_SHARED_KEY
   const ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY
+  // Deploy-specific extra host (e.g. a Tailscale MagicDNS name) — set via
+  // ALLOWED_HOST_EXTRA in .env.local so it never needs to be hardcoded here.
+  const allowedHosts = env.ALLOWED_HOST_EXTRA ? ['stride.home', env.ALLOWED_HOST_EXTRA] : ['stride.home']
 
   // Rejects requests whose x-stride-key header doesn't match VITE_STRIDE_SHARED_KEY.
   // Note: this key ships in the client bundle (the SPA has to attach it to its own
@@ -309,7 +312,7 @@ export default defineConfig(({ mode }) => {
       host: true,
       strictPort: true,
       port: 5173,
-      allowedHosts: ['stride.home']
+      allowedHosts
     }
   }
 })
