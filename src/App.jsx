@@ -191,13 +191,13 @@ function buildContext(temp, wind, humidity, activity, locker) {
   const adj = (activity==="workout"||activity==="race")?15:activity==="easy"?-5:0;
   const felt = temp + adj;
   const climate = [];
-  if (felt<32)      {climate.push("REQUIRED bottom: tights or pants");climate.push("REQUIRED top: long sleeve base layer");climate.push("REQUIRED: midlayer or jacket");climate.push("REQUIRED: gloves");climate.push("REQUIRED: hat or beanie");climate.push("CONSIDER: neck gaiter or buff");}
-  else if (felt<42) {climate.push("REQUIRED bottom: tights or pants");climate.push("REQUIRED top: long sleeve");climate.push("REQUIRED: gloves");climate.push("CONSIDER: midlayer");climate.push("CONSIDER: light hat or ear covering");}
-  else if (felt<52) {climate.push("REQUIRED bottom: tights, pants, or shorts");climate.push("REQUIRED top: long sleeve or short sleeve");climate.push("CONSIDER: light gloves");}
-  else if (felt<62) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve — no tanks");}
+  if (felt<32)      {climate.push("REQUIRED bottom: tights or pants");climate.push("REQUIRED top: long sleeve");climate.push("REQUIRED: midlayer or jacket");climate.push("REQUIRED: gloves");climate.push("REQUIRED: hat or beanie");climate.push("CONSIDER: neck gaiter or buff");}
+  else if (felt<42) {climate.push("REQUIRED bottom: tights or pants");climate.push("REQUIRED top: long sleeve");climate.push("REQUIRED: gloves");climate.push("CONSIDER: midlayer or vest");climate.push("CONSIDER: light hat or ear covering");}
+  else if (felt<52) {climate.push("REQUIRED bottom: tights, pants, or shorts");climate.push("REQUIRED top: long sleeve or short sleeve");climate.push("CONSIDER: light gloves");climate.push("CONSIDER: vest");}
+  else if (felt<62) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve — no tanks");climate.push("CONSIDER: vest if breezy");}
   else if (felt<72) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve or tank/singlet");}
   else              {climate.push("REQUIRED bottom: lightest shorts");climate.push("REQUIRED top: tank/singlet preferred, lightest short sleeve acceptable");climate.push("CONSIDER: lightweight cap for sun and sweat");}
-  if (wind>18) climate.push("REQUIRED: wind-blocking layer");
+  if (wind>18) climate.push("REQUIRED: wind-blocking layer (jacket, midlayer, or vest)");
   if (humidity>78) climate.push("REQUIRED: moisture-wicking only");
   if (activity==="long") climate.push("CONSIDER: pockets, anti-chafe fabrics");
   const lockerLines = locker.filter(item => item.type!=="shoes").map(item => {
@@ -207,6 +207,29 @@ function buildContext(temp, wind, humidity, activity, locker) {
     return `${item.brand} ${item.name} (${item.colorway})${shade}${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type} | rated ${item.warmthMin}–${item.warmthMax}°F${worn}${item.isCustom?" [custom]":""}${notes}`;
   });
   return {felt,climate,lockerLines};
+}
+
+// Deterministic backstop: the model occasionally stacks two Top-category items
+// (e.g. relabeling a second long sleeve as "Base Layer — Top") despite prompt
+// instructions against it. Strip duplicates by matching against actual locker
+// item types rather than trusting the model's own category labels.
+function findLockerType(itemStr, locker) {
+  if (!itemStr) return null;
+  const norm = s => (s||"").toLowerCase().replace(/[^a-z0-9]+/g,"");
+  const target = norm(itemStr);
+  const match = locker.find(i => norm(`${i.brand} ${i.name}`) === target);
+  return match ? match.type : null;
+}
+function sanitizeTopLayering(suggestion, locker) {
+  if (!suggestion || !Array.isArray(suggestion.items)) return suggestion;
+  const topTypes = new Set(["top-ss","top-ls","tank"]);
+  const isTopItem = row => topTypes.has(findLockerType(row.item, locker));
+  const topRows = suggestion.items.filter(isTopItem);
+  if (topRows.length <= 1) return suggestion;
+  const keeper = topRows.find(r => (r.category||"").trim().toLowerCase() === "top") || topRows[0];
+  const items = suggestion.items.filter(row => row === keeper || !isTopItem(row));
+  console.warn("Stride: removed duplicate Top-category item(s) from AI suggestion", topRows.filter(r=>r!==keeper));
+  return { ...suggestion, items };
 }
 
 // ─── COMPONENT ───────────────────────────────────────────────────────────────
@@ -406,7 +429,7 @@ export default function Stride() {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({
-        model: "claude-opus-4-8",
+        model: "claude-sonnet-5",
         max_tokens: 300,
         messages: [{ role: "user", content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
@@ -548,7 +571,9 @@ ACTIVITY STYLE:
 LAYERING — there are two distinct reasons to add a "Base Layer — Bottom" row alongside a Shorts "Bottom" row. They use different locker item types and different reasoning. Do not conflate them:
 1. COVERAGE / SUPPORT layering (any temperature, any activity): if the chosen Bottom is shorts, check the locker for an "underwear"-type item (compression underwear). Pair it under the shorts as "Base Layer — Bottom" when the shorts' notes mention no liner, unlined, or similar, or when extra coverage/support suits the activity (e.g. workout/race). This is not a warmth decision — it applies on a hot day just as much as a cool one.
 2. WARMTH layering (cooler days only, roughly felt < 52°F): a "tights"-type item may instead be worn under shorts as a "Base Layer — Bottom" purely for insulation. This is one of three cold-weather options for the bottom half — weigh it against choosing Pants alone or Tights alone as the main Bottom (see COLD BOTTOM CHOICE below) rather than defaulting to it automatically.
-Add at most one "Base Layer — Bottom" row — pick whichever reason actually applies, or neither. You may also add "Base Layer — Top" the same way when a thin top layer suits the conditions. Use the same item object shape for any base-layer row.
+Add at most one "Base Layer — Bottom" row — pick whichever reason actually applies, or neither. Use the same item object shape for any base-layer row.
+
+TOP LAYERING: The Top is a single item (Long Sleeve, Short Sleeve, or Tank/Singlet). When climate guidance flags "midlayer" or "vest", you may add one "Outer Layer" row using a locker item labeled "Midlayer" or "Vest" — never a second Top item. Reach for "Midlayer" when arms need warmth too (cold, low-effort, or wind-exposed conditions); reach for "Vest" when only the core needs wind/warmth blocking and the arms should stay free (mild-cool, breezy, or high-effort conditions where full sleeves would overheat). If climate guidance says "REQUIRED: wind-blocking layer (jacket, midlayer, or vest)", pick whichever of the three best fits the felt temp and arm-coverage need above.
 
 COLD BOTTOM CHOICE: On cooler days (roughly felt < 52°F), reason about three options for the main Bottom rather than reflexively picking tights:
 (a) Bottom: Pants — a standalone "pants"-type item, worn alone with no shorts
@@ -565,19 +590,20 @@ RULES:
 - ONLY suggest items from the LOCKER list above.
 - Strongly avoid any item marked [WORN TODAY — avoid repeating] unless it is the only sensible option.
 - Always include Bottom, Top, and Socks.
-- Add accessory categories (Gloves, Hat, etc.) whenever climate guidance lists them as REQUIRED or CONSIDER — REQUIRED accessories must appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item.
+- Add accessory categories (Gloves, Hat, etc.) whenever climate guidance lists them as REQUIRED or CONSIDER — REQUIRED accessories must appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item. Midlayer and vest are handled separately under TOP LAYERING above, not as generic accessories.
 - If no suitable locker item exists for a slot, set "item" to null and provide a "typeRecommendation".
 - Never invent brand names or models not in the locker.
 - An "underwear"-type item (compression underwear) must NEVER be used as the main "Bottom" category by itself — it may only appear as a "Base Layer — Bottom" row alongside a real Bottom (Shorts, Tights, or Pants).
 - A "pants"-type item is a standalone Bottom, not a base layer — never place it in a "Base Layer — Bottom" row, and do not pair Pants with a Tights base-layer row (redundant warmth). Pants may still be paired with an "underwear" base-layer row for coverage/support if the locker has one.
+- The Top item may only appear once in the outfit — never duplicate it under a different category name (e.g. "Base Layer — Top"). Any second warmth layer must be an "Outer Layer" row using a Midlayer or Vest item.
 - Do not mention or reference shoes anywhere in the output — footwear is chosen separately and is out of scope for this suggestion.`;
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-opus-4-8",max_tokens:4000,messages:[{role:"user",content:prompt}],output_config:{format:{type:"json_schema",schema:OUTFIT_SUGGESTION_SCHEMA}}})});
+      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-5",max_tokens:4000,messages:[{role:"user",content:prompt}],output_config:{format:{type:"json_schema",schema:OUTFIT_SUGGESTION_SCHEMA}}})});
       const d = await res.json();
       if (!res.ok) throw new Error(d.error?.message || `API error ${res.status}`);
       if (d.stop_reason === "max_tokens") console.warn("Outfit call hit max_tokens");
       const txt = d.content?.find(b=>b.type==="text")?.text||"";
-      const parsed = JSON.parse(txt.trim());
+      const parsed = sanitizeTopLayering(JSON.parse(txt.trim()), locker);
       const meta = {temp:weather.temp,wind:weather.wind,humidity:weather.humidity,condition:weather.condition,activity,felt:ctx.felt,ts:Date.now()};
       setSuggestion(parsed);
       setSuggestionMeta(meta);
