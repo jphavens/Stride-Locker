@@ -94,7 +94,7 @@ const GEAR_DB = [
   { id:"sh18", brand:"Hoka x Satisfy", name:"Mafate Speed 4 Lite", type:"shoes", persona:["fashion-pacer"], use:"Trail / Collab", warmthMin:0, warmthMax:95, colorways:["Silver/Clear Technical"] },
 ];
 
-const TYPE_LABELS = { "shorts":"Shorts","tights":"Tights","tank":"Tank / Singlet","top-ss":"Short Sleeve","top-ls":"Long Sleeve","midlayer":"Midlayer","jacket":"Jacket","vest":"Vest","hat":"Hat / Cap","gloves":"Gloves","socks":"Socks","shoes":"Shoes" };
+const TYPE_LABELS = { "shorts":"Shorts","tights":"Tights","pants":"Pants","underwear":"Compression Underwear","tank":"Tank / Singlet","top-ss":"Short Sleeve","top-ls":"Long Sleeve","midlayer":"Midlayer","jacket":"Jacket","vest":"Vest","hat":"Hat / Cap","gloves":"Gloves","socks":"Socks","shoes":"Shoes" };
 const ACTIVITY_TYPES = [{id:"easy",label:"Easy Run",icon:"◦",desc:"Recovery / conversational pace"},{id:"workout",label:"Workout",icon:"◈",desc:"Tempo, intervals, or fartlek"},{id:"long",label:"Long Run",icon:"◉",desc:"Distance — 60+ minutes"},{id:"race",label:"Race",icon:"◎",desc:"All out effort"}];
 const EMPTY_CUSTOM = {brand:"",name:"",type:"shorts",colorway:"",warmthMin:40,warmthMax:90,notes:""};
 const TODAY = new Date().toDateString();
@@ -191,9 +191,9 @@ function buildContext(temp, wind, humidity, activity, locker) {
   const adj = (activity==="workout"||activity==="race")?15:activity==="easy"?-5:0;
   const felt = temp + adj;
   const climate = [];
-  if (felt<32)      {climate.push("REQUIRED bottom: tights");climate.push("REQUIRED top: long sleeve base layer");climate.push("REQUIRED: midlayer or jacket");climate.push("REQUIRED: gloves");climate.push("REQUIRED: hat or beanie");climate.push("CONSIDER: neck gaiter or buff");}
-  else if (felt<42) {climate.push("REQUIRED bottom: tights");climate.push("REQUIRED top: long sleeve");climate.push("REQUIRED: gloves");climate.push("CONSIDER: midlayer");climate.push("CONSIDER: light hat or ear covering");}
-  else if (felt<52) {climate.push("REQUIRED bottom: tights or shorts");climate.push("REQUIRED top: long sleeve or short sleeve");climate.push("CONSIDER: light gloves");}
+  if (felt<32)      {climate.push("REQUIRED bottom: tights or pants");climate.push("REQUIRED top: long sleeve base layer");climate.push("REQUIRED: midlayer or jacket");climate.push("REQUIRED: gloves");climate.push("REQUIRED: hat or beanie");climate.push("CONSIDER: neck gaiter or buff");}
+  else if (felt<42) {climate.push("REQUIRED bottom: tights or pants");climate.push("REQUIRED top: long sleeve");climate.push("REQUIRED: gloves");climate.push("CONSIDER: midlayer");climate.push("CONSIDER: light hat or ear covering");}
+  else if (felt<52) {climate.push("REQUIRED bottom: tights, pants, or shorts");climate.push("REQUIRED top: long sleeve or short sleeve");climate.push("CONSIDER: light gloves");}
   else if (felt<62) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve — no tanks");}
   else if (felt<72) {climate.push("REQUIRED bottom: shorts");climate.push("REQUIRED top: short sleeve or tank/singlet");}
   else              {climate.push("REQUIRED bottom: lightest shorts");climate.push("REQUIRED top: tank/singlet preferred, lightest short sleeve acceptable");climate.push("CONSIDER: lightweight cap for sun and sweat");}
@@ -203,7 +203,8 @@ function buildContext(temp, wind, humidity, activity, locker) {
   const lockerLines = locker.filter(item => item.type!=="shoes").map(item => {
     const worn = item.wornToday===TODAY?" [WORN TODAY — avoid repeating]":"";
     const shade = item.shadeDescription ? ` | Shade: ${item.shadeDescription}` : "";
-    return `${item.brand} ${item.name} (${item.colorway})${shade}${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type} | rated ${item.warmthMin}–${item.warmthMax}°F${worn}${item.isCustom?" [custom]":""}`;
+    const notes = item.notes ? ` | Notes: ${item.notes}` : "";
+    return `${item.brand} ${item.name} (${item.colorway})${shade}${item.fabric?` [${item.fabric}]`:""} — ${TYPE_LABELS[item.type]||item.type} | rated ${item.warmthMin}–${item.warmthMax}°F${worn}${item.isCustom?" [custom]":""}${notes}`;
   });
   return {felt,climate,lockerLines};
 }
@@ -540,11 +541,20 @@ ${ctx.climate.map(r=>`- ${r}`).join("\n")}
 Prefer gear appropriate for the felt temp and activity. You MAY use an item rated outside today's range when effort or layering justifies it — reason about it.
 
 ACTIVITY STYLE:
-- workout/race → minimal and breathable; when cold, prefer a thin compression base layer under a light short over full tights
+- workout/race → minimal and breathable; a short paired with compression underwear underneath is often preferred over full tights, even when cool
 - easy → comfort and warmth fine
 - long → coverage, pockets, anti-chafe fabrics
 
-LAYERING: You may add optional base-layer rows (e.g. "Base Layer — Bottom", "Base Layer — Top") before the main Bottom/Top rows when layering makes sense for the conditions and activity. Use the same item object shape.
+LAYERING — there are two distinct reasons to add a "Base Layer — Bottom" row alongside a Shorts "Bottom" row. They use different locker item types and different reasoning. Do not conflate them:
+1. COVERAGE / SUPPORT layering (any temperature, any activity): if the chosen Bottom is shorts, check the locker for an "underwear"-type item (compression underwear). Pair it under the shorts as "Base Layer — Bottom" when the shorts' notes mention no liner, unlined, or similar, or when extra coverage/support suits the activity (e.g. workout/race). This is not a warmth decision — it applies on a hot day just as much as a cool one.
+2. WARMTH layering (cooler days only, roughly felt < 52°F): a "tights"-type item may instead be worn under shorts as a "Base Layer — Bottom" purely for insulation. This is one of three cold-weather options for the bottom half — weigh it against choosing Pants alone or Tights alone as the main Bottom (see COLD BOTTOM CHOICE below) rather than defaulting to it automatically.
+Add at most one "Base Layer — Bottom" row — pick whichever reason actually applies, or neither. You may also add "Base Layer — Top" the same way when a thin top layer suits the conditions. Use the same item object shape for any base-layer row.
+
+COLD BOTTOM CHOICE: On cooler days (roughly felt < 52°F), reason about three options for the main Bottom rather than reflexively picking tights:
+(a) Bottom: Pants — a standalone "pants"-type item, worn alone with no shorts
+(b) Bottom: Tights — a standalone "tights"-type item, worn alone with no shorts
+(c) Bottom: Shorts + Base Layer — Bottom: Tights — shorts layered over tights for warmth (per WARMTH layering above)
+Weigh activity and felt temp when choosing; Pants and Tights-alone are equally valid options to Shorts+Tights-layered, not fallbacks.
 
 COLOR: Neutrals (black/white/grey/navy/ecru/olive) pair with anything. Earth tones (rust/sage/moss/tan) are cohesive. Balance bold with neutral. Honor shade descriptions for coordination.
 
@@ -558,6 +568,8 @@ RULES:
 - Add accessory categories (Gloves, Hat, etc.) whenever climate guidance lists them as REQUIRED or CONSIDER — REQUIRED accessories must appear even if the locker has none; CONSIDER accessories appear only if the locker has a matching item.
 - If no suitable locker item exists for a slot, set "item" to null and provide a "typeRecommendation".
 - Never invent brand names or models not in the locker.
+- An "underwear"-type item (compression underwear) must NEVER be used as the main "Bottom" category by itself — it may only appear as a "Base Layer — Bottom" row alongside a real Bottom (Shorts, Tights, or Pants).
+- A "pants"-type item is a standalone Bottom, not a base layer — never place it in a "Base Layer — Bottom" row, and do not pair Pants with a Tights base-layer row (redundant warmth). Pants may still be paired with an "underwear" base-layer row for coverage/support if the locker has one.
 - Do not mention or reference shoes anywhere in the output — footwear is chosen separately and is out of scope for this suggestion.`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-opus-4-8",max_tokens:4000,messages:[{role:"user",content:prompt}],output_config:{format:{type:"json_schema",schema:OUTFIT_SUGGESTION_SCHEMA}}})});
