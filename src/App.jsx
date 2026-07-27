@@ -146,12 +146,12 @@ const deletePhoto = async (lockerId) => {
 
 // ─── WEATHER ─────────────────────────────────────────────────────────────────
 async function fetchWeather(lat, lon) {
-  const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,wind_speed_10m,relative_humidity_2m,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`);
+  const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,wind_speed_10m,relative_humidity_2m,weather_code&hourly=temperature_2m&forecast_hours=4&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto`);
   const d = await res.json();
   const c = d.current;
   const code = c.weather_code;
   const condition = code<=1?"Clear":code<=3?"Partly Cloudy":code<=49?"Foggy":code<=67?"Rainy":code<=77?"Snowy":code<=82?"Showers":"Stormy";
-  return {temp:Math.round(c.temperature_2m),wind:Math.round(c.wind_speed_10m),humidity:Math.round(c.relative_humidity_2m),condition,auto:true};
+  return {temp:Math.round(c.temperature_2m),wind:Math.round(c.wind_speed_10m),humidity:Math.round(c.relative_humidity_2m),condition,auto:true,hourlyTemps:d.hourly?.temperature_2m};
 }
 
 // buildContext(), the prompt template, and sanitizeTopLayering() now live
@@ -466,12 +466,12 @@ export default function Stride() {
       const res = await apiFetch("/api/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ temp: weather.temp, wind: weather.wind, humidity: weather.humidity, condition: weather.condition, activity, locker })
+        body: JSON.stringify({ temp: weather.temp, wind: weather.wind, humidity: weather.humidity, condition: weather.condition, activity, locker, hourlyTemps: weather.auto ? weather.hourlyTemps : undefined })
       });
       const parsed = await res.json();
       if (!res.ok) throw new Error(parsed.message || parsed.error || `API error ${res.status}`);
       if (parsed.error) throw new Error(parsed.message);
-      const meta = {temp:weather.temp,wind:weather.wind,humidity:weather.humidity,condition:weather.condition,activity,ts:Date.now()};
+      const meta = {temp:weather.temp,wind:weather.wind,humidity:weather.humidity,condition:weather.condition,activity,hourlyTemps: weather.auto ? weather.hourlyTemps : undefined,ts:Date.now()};
       setSuggestion(parsed);
       setSuggestionMeta(meta);
       try { localStorage.setItem("stride-last-suggestion-v1", JSON.stringify({suggestion:parsed,meta})); } catch {}
@@ -494,7 +494,7 @@ export default function Stride() {
         body: JSON.stringify({
           mode: "swap",
           temp: suggestionMeta.temp, wind: suggestionMeta.wind, humidity: suggestionMeta.humidity,
-          condition: suggestionMeta.condition, activity: suggestionMeta.activity,
+          condition: suggestionMeta.condition, activity: suggestionMeta.activity, hourlyTemps: suggestionMeta.hourlyTemps,
           locker, category: row.category, previousItem: { item: row.item, colorway: row.colorway }, lockedItems
         })
       });

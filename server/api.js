@@ -37,7 +37,7 @@ const TODAY = new Date().toDateString();
 
 // ─── ALGORITHM (moved from src/App.jsx — needs to run server-side now that
 // the Anthropic call is server-side) ───────────────────────────────────────
-function buildContext(temp, wind, humidity, activity, locker) {
+function buildContext(temp, wind, humidity, activity, locker, hourlyTemps) {
   const adj = (activity==="workout"||activity==="race")?15:activity==="easy"?-5:0;
   const felt = temp + adj;
   const climate = [];
@@ -49,6 +49,12 @@ function buildContext(temp, wind, humidity, activity, locker) {
   else              {climate.push("REQUIRED bottom: lightest shorts");climate.push("REQUIRED top: tank/singlet preferred, lightest short sleeve acceptable");climate.push("CONSIDER: lightweight cap for sun and sweat");}
   if (wind>18) climate.push("REQUIRED: wind-blocking layer (jacket, midlayer, or vest)");
   if (humidity>78) climate.push("REQUIRED: moisture-wicking only");
+  if (activity==="long" && Array.isArray(hourlyTemps) && hourlyTemps.length >= 4) {
+    const delta = hourlyTemps[3] - hourlyTemps[0];
+    if (Math.abs(delta) >= 8) {
+      climate.push(`CONSIDER: temperature ${delta>0?"rising":"falling"} ~${Math.abs(Math.round(delta))}°F over the next 3hrs`);
+    }
+  }
   if (activity==="long") climate.push("CONSIDER: pockets, anti-chafe fabrics");
   const lockerLines = locker.filter(item => item.type!=="shoes").map(item => {
     const worn = item.wornToday===TODAY?" [WORN TODAY — avoid repeating]":"";
@@ -286,8 +292,8 @@ export function createApiHandlers({ sharedKey, anthropicApiKey }) {
     readBody(req).then(async (raw) => {
       try {
         const body = JSON.parse(raw.toString('utf-8'))
-        const { temp, wind, humidity, condition, activity, locker } = body
-        const ctx = buildContext(temp, wind, humidity, activity, locker)
+        const { temp, wind, humidity, condition, activity, locker, hourlyTemps } = body
+        const ctx = buildContext(temp, wind, humidity, activity, locker, hourlyTemps)
 
         if (body.mode === 'swap') {
           const { category, previousItem, lockedItems } = body
