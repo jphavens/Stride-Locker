@@ -3,24 +3,24 @@ import { useState, useEffect } from "react";
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const GEAR_DB = [
-  { id:"s1", brand:"Satisfy", name:"Justice Distance Shorts", type:"shorts", fabric:"Justice™", warmthMin:55, warmthMax:95, colorways:["Black","Aged White","Olive Drab"] },
-  { id:"s2", brand:"Satisfy", name:"MothTech Muscle Shorts", type:"shorts", fabric:"MothTech™", warmthMin:58, warmthMax:95, colorways:["Black","Off White","Moss"] },
-  { id:"s3", brand:"Satisfy", name:"AuraLite Trail Shorts", type:"shorts", fabric:"AuraLite™", warmthMin:55, warmthMax:95, colorways:["Black","Ecru","Burgundy"] },
-  { id:"s4", brand:"Tracksmith", name:"Session Short", type:"shorts", fabric:"Veloce Blend", warmthMin:52, warmthMax:95, colorways:["Heather Grey","Black","Navy","Ivory"] },
-  { id:"s5", brand:"Tracksmith", name:"Van Cortlandt Short", type:"shorts", fabric:"2:09 Mesh", warmthMin:55, warmthMax:95, colorways:["Heather Grey/Navy","Black/Gold","Ivory/Wine"] },
-  { id:"s6", brand:"Tracksmith", name:"Twilight Short", type:"shorts", fabric:"Bravio Blend", warmthMin:58, warmthMax:95, colorways:["Heather Navy","Black","Moss Gray"] },
-  { id:"s7", brand:"On Running", name:"Lightweight Shorts 5in", type:"shorts", fabric:"Swift-Weave", warmthMin:55, warmthMax:95, colorways:["Black","Navy","Glacier","Undyed"] },
-  { id:"s8", brand:"District Vision", name:"Sphaera 4in Short", type:"shorts", fabric:"Technical Mesh", warmthMin:55, warmthMax:95, colorways:["Black","Sage","Dark Taupe","Wild Flower"] },
-  { id:"s9", brand:"Rabbit", name:"Run Stuff It Short", type:"shorts", fabric:"EZ Performance", warmthMin:50, warmthMax:90, colorways:["Black","Cobalt Blue","Forest Green","Sky"] },
-  { id:"s10", brand:"Janji", name:"5in AFO Short", type:"shorts", fabric:"AFO Stretch", warmthMin:55, warmthMax:95, colorways:["Black","Dusk Blue","Vintage Khaki","Rust"] },
-  { id:"s11", brand:"Bandit", name:"Run Short 5in", type:"shorts", fabric:"Stretch Woven", warmthMin:55, warmthMax:95, colorways:["Black","Ecru","Forest"] },
-  { id:"s12", brand:"Soar", name:"Run Short", type:"shorts", fabric:"Swift Knit", warmthMin:55, warmthMax:95, colorways:["Black","White","Navy"] },
-  { id:"t1", brand:"Satisfy", name:"TechSilk Tights", type:"tights", fabric:"TechSilk™", warmthMin:20, warmthMax:52, colorways:["Black","Dark Olive"] },
-  { id:"t2", brand:"Tracksmith", name:"Twilight Tight", type:"tights", fabric:"Bravio Blend", warmthMin:22, warmthMax:50, colorways:["Heather Navy","Black","Moss Gray"] },
-  { id:"t3", brand:"Tracksmith", name:"Harrier Tight", type:"tights", fabric:"Inverno Blend", warmthMin:15, warmthMax:45, colorways:["Black","Heather Grey"] },
-  { id:"t4", brand:"On Running", name:"Running Tights", type:"tights", fabric:"Swift-Weave", warmthMin:20, warmthMax:50, colorways:["Black","Navy"] },
-  { id:"t5", brand:"District Vision", name:"Sphaera Tight", type:"tights", fabric:"Compression Knit", warmthMin:22, warmthMax:50, colorways:["Black","Dark Taupe","Sage"] },
-  { id:"t6", brand:"Rabbit", name:"Run Tight", type:"tights", fabric:"EZ Compression", warmthMin:20, warmthMax:50, colorways:["Black","Heather Charcoal","Forest"] },
+  { id:"s1", brand:"Satisfy", name:"Justice Distance Shorts", type:"shorts", fabric:"Justice™", warmthMin:55, warmthMax:95, lined:true, colorways:["Black","Aged White","Olive Drab"] },
+  { id:"s2", brand:"Satisfy", name:"MothTech Muscle Shorts", type:"shorts", fabric:"MothTech™", warmthMin:58, warmthMax:95, lined:true, colorways:["Black","Off White","Moss"] },
+  { id:"s3", brand:"Satisfy", name:"AuraLite Trail Shorts", type:"shorts", fabric:"AuraLite™", warmthMin:55, warmthMax:95, lined:true, colorways:["Black","Ecru","Burgundy"] },
+  { id:"s4", brand:"Tracksmith", name:"Session Short", type:"shorts", fabric:"Veloce Blend", warmthMin:52, warmthMax:95, lined:true, colorways:["Heather Grey","Black","Navy","Ivory"] },
+  { id:"s5", brand:"Tracksmith", name:"Van Cortlandt Short", type:"shorts", fabric:"2:09 Mesh", warmthMin:55, warmthMax:95, lined:true, colorways:["Heather Grey/Navy","Black/Gold","Ivory/Wine"] },
+  { id:"s6", brand:"Tracksmith", name:"Twilight Short", type:"shorts", fabric:"Bravio Blend", warmthMin:58, warmthMax:95, lined:true, colorways:["Heather Navy","Black","Moss Gray"] },
+  { id:"s7", brand:"On Running", name:"Lightweight Shorts 5in", type:"shorts", fabric:"Swift-Weave", warmthMin:55, warmthMax:95, lined:true, colorways:["Black","Navy","Glacier","Undyed"] },
+  { id:"s8", brand:"District Vision", name:"Sphaera 4in Short", type:"shorts", fabric:"Technical Mesh", warmthMin:55, warmthMax:95, lined:true, colorways:["Black","Sage","Dark Taupe","Wild Flower"] },
+  { id:"s9", brand:"Rabbit", name:"Run Stuff It Short", type:"shorts", fabric:"EZ Performance", warmthMin:50, warmthMax:90, lined:true, colorways:["Black","Cobalt Blue","Forest Green","Sky"] },
+  { id:"s10", brand:"Janji", name:"5in AFO Short", type:"shorts", fabric:"AFO Stretch", warmthMin:55, warmthMax:95, lined:true, colorways:["Black","Dusk Blue","Vintage Khaki","Rust"] },
+  { id:"s11", brand:"Bandit", name:"Run Short 5in", type:"shorts", fabric:"Stretch Woven", warmthMin:55, warmthMax:95, lined:true, colorways:["Black","Ecru","Forest"] },
+  { id:"s12", brand:"Soar", name:"Run Short", type:"shorts", fabric:"Swift Knit", warmthMin:55, warmthMax:95, lined:true, colorways:["Black","White","Navy"] },
+  { id:"t1", brand:"Satisfy", name:"TechSilk Tights", type:"tights", fabric:"TechSilk™", warmthMin:20, warmthMax:52, lined:true, colorways:["Black","Dark Olive"] },
+  { id:"t2", brand:"Tracksmith", name:"Twilight Tight", type:"tights", fabric:"Bravio Blend", warmthMin:22, warmthMax:50, lined:true, colorways:["Heather Navy","Black","Moss Gray"] },
+  { id:"t3", brand:"Tracksmith", name:"Harrier Tight", type:"tights", fabric:"Inverno Blend", warmthMin:15, warmthMax:45, lined:true, colorways:["Black","Heather Grey"] },
+  { id:"t4", brand:"On Running", name:"Running Tights", type:"tights", fabric:"Swift-Weave", warmthMin:20, warmthMax:50, lined:true, colorways:["Black","Navy"] },
+  { id:"t5", brand:"District Vision", name:"Sphaera Tight", type:"tights", fabric:"Compression Knit", warmthMin:22, warmthMax:50, lined:true, colorways:["Black","Dark Taupe","Sage"] },
+  { id:"t6", brand:"Rabbit", name:"Run Tight", type:"tights", fabric:"EZ Compression", warmthMin:20, warmthMax:50, lined:true, colorways:["Black","Heather Charcoal","Forest"] },
   { id:"ts1", brand:"Satisfy", name:"AuraLite Tee", type:"top-ss", fabric:"AuraLite™", warmthMin:52, warmthMax:95, colorways:["White","Black","Aged White","Burgundy"] },
   { id:"ts2", brand:"Satisfy", name:"MothTech Muscle Tee", type:"top-ss", fabric:"MothTech™", warmthMin:58, warmthMax:95, colorways:["Black","Off White","Washed Brown"] },
   { id:"ts3", brand:"Satisfy", name:"PeaceShell River Shirt", type:"top-ss", fabric:"PeaceShell™", warmthMin:52, warmthMax:85, colorways:["Black","Olive","Ecru"] },
@@ -88,7 +88,10 @@ const GEAR_DB = [
 
 const TYPE_LABELS = { "shorts":"Shorts","tights":"Tights","pants":"Pants","underwear":"Compression Underwear","tank":"Tank / Singlet","top-ss":"Short Sleeve","top-ls":"Long Sleeve","midlayer":"Midlayer","jacket":"Jacket","vest":"Vest","hat":"Hat / Cap","gloves":"Gloves","socks":"Socks","shoes":"Shoes" };
 const ACTIVITY_TYPES = [{id:"easy",label:"Easy Run",icon:"◦",desc:"Recovery / conversational pace"},{id:"workout",label:"Workout",icon:"◈",desc:"Tempo, intervals, or fartlek"},{id:"long",label:"Long Run",icon:"◉",desc:"Distance — 60+ minutes"},{id:"race",label:"Race",icon:"◎",desc:"All out effort"}];
-const EMPTY_CUSTOM = {brand:"",name:"",type:"shorts",colorway:"",warmthMin:40,warmthMax:90,notes:""};
+const EMPTY_CUSTOM = {brand:"",name:"",type:"shorts",colorway:"",warmthMin:40,warmthMax:90,notes:"",lined:true};
+// Lined/unlined applies only to shorts + standalone tights (drives layering for shorts,
+// warmth signal for tights). Missing/undefined is treated as lined everywhere it's read.
+const LINED_TYPES = new Set(["shorts","tights"]);
 const TODAY = new Date().toDateString();
 
 // ─── INDEXED DB (Photo Storage) ───────────────────────────────────────────────
@@ -324,6 +327,7 @@ export default function Stride() {
       notes: item.notes || "",
       warmthMin: item.warmthMin,
       warmthMax: item.warmthMax,
+      lined: item.lined !== false,
     });
     setShadeAnalysis(item.shadeDescription || null);
     setPhotoFile(null);
@@ -332,7 +336,7 @@ export default function Stride() {
   };
 
   const saveEdit = async () => {
-    const trimmedForm = {...editForm, brand:editForm.brand.trim(), name:editForm.name.trim(), colorway:editForm.colorway.trim(), notes:editForm.notes.trim()};
+    const trimmedForm = {...editForm, brand:editForm.brand.trim(), name:editForm.name.trim(), colorway:editForm.colorway.trim(), notes:editForm.notes.trim(), lined: LINED_TYPES.has(editForm.type) ? editForm.lined !== false : undefined};
     setLocker(prev => prev.map(i =>
       i.lockerId === editingItem.lockerId ? {...i, ...trimmedForm, shadeDescription: shadeAnalysis || null} : i
     ));
@@ -390,7 +394,7 @@ export default function Stride() {
     if (!customForm.brand||!customForm.name||!customForm.colorway) return;
     const ts = Date.now();
     const lockerId = `c-${ts}-${Math.random()}`;
-    const newItem = { id:`c-${ts}`, lockerId, brand:customForm.brand.trim(), name:customForm.name.trim(), type:customForm.type, colorway:customForm.colorway.trim(), notes:customForm.notes.trim(), warmthMin:customForm.warmthMin, warmthMax:customForm.warmthMax, isCustom:true, shadeDescription: shadeAnalysis||null };
+    const newItem = { id:`c-${ts}`, lockerId, brand:customForm.brand.trim(), name:customForm.name.trim(), type:customForm.type, colorway:customForm.colorway.trim(), notes:customForm.notes.trim(), warmthMin:customForm.warmthMin, warmthMax:customForm.warmthMax, isCustom:true, shadeDescription: shadeAnalysis||null, ...(LINED_TYPES.has(customForm.type) ? { lined: customForm.lined !== false } : {}) };
     setLocker(prev => [...prev, newItem]);
     if (photoFile) {
       await savePhoto(lockerId, photoFile);
@@ -944,6 +948,16 @@ export default function Stride() {
                     {Object.entries(TYPE_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
+                {LINED_TYPES.has(customForm.type) && (
+                  <div>
+                    <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Liner</p>
+                    <div style={{display:"flex",gap:5}}>
+                      <button type="button" className={`pill ${customForm.lined!==false?"on":""}`} onClick={()=>setCustomForm(f=>({...f,lined:true}))}>Lined</button>
+                      <button type="button" className={`pill ${customForm.lined===false?"on":""}`} onClick={()=>setCustomForm(f=>({...f,lined:false}))}>Unlined</button>
+                    </div>
+                    <p className="dm" style={{fontSize:10,color:"#aaa",marginTop:4,fontStyle:"italic"}}>{customForm.type==="shorts"?"Lined shorts are worn on their own — nothing goes underneath.":"Unlined tights are for hot days / hard efforts; lined for cooler temps."}</p>
+                  </div>
+                )}
                 <div style={{display:"flex",gap:10}}>
                   <div style={{flex:1}}>
                     <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Min °F</p>
@@ -1050,6 +1064,16 @@ export default function Stride() {
                 {Object.entries(TYPE_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
               </select>
             </div>
+            {LINED_TYPES.has(editForm.type) && (
+              <div style={{marginBottom:10}}>
+                <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Liner</p>
+                <div style={{display:"flex",gap:5}}>
+                  <button type="button" className={`pill ${editForm.lined!==false?"on":""}`} onClick={()=>setEditForm(f=>({...f,lined:true}))}>Lined</button>
+                  <button type="button" className={`pill ${editForm.lined===false?"on":""}`} onClick={()=>setEditForm(f=>({...f,lined:false}))}>Unlined</button>
+                </div>
+                <p className="dm" style={{fontSize:10,color:"#aaa",marginTop:4,fontStyle:"italic"}}>{editForm.type==="shorts"?"Lined shorts are worn on their own — nothing goes underneath.":"Unlined tights are for hot days / hard efforts; lined for cooler temps."}</p>
+              </div>
+            )}
             <div style={{display:"flex",gap:10,marginBottom:14}}>
               <div style={{flex:1}}>
                 <p className="dm" style={{fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",color:"#888",marginBottom:4}}>Min °F</p>
