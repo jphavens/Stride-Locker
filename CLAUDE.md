@@ -64,6 +64,7 @@ src/
 server/
   api.js        — shared route handlers (locker/photos/suggest/shade, auth gate, logging) — imported by both vite.config.js (dev) and server/index.js (prod)
   index.js      — production entrypoint: plain http server, /api/* → server/api.js handlers, static dist/ via sirv otherwise
+public/         — favicon set (favicon.ico/.svg, apple-touch-icon.png, icon-192/512.png) + site.webmanifest; Vite copies it into dist/ at build, sirv serves it in prod
 data/           — server-persisted locker.json + photos/ (gitignored, never commit)
 .env.local      — ANTHROPIC_API_KEY, VITE_STRIDE_SHARED_KEY (gitignored, never commit)
 vite.config.js  — dev-only now: wires server/api.js handlers into configureServer for `npm run dev`; allowedHosts restricted to the deploy host (see that file, not documented here) — dev-server-specific, has no production equivalent

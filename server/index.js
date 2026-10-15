@@ -8,7 +8,14 @@ const anthropicApiKey = process.env.ANTHROPIC_API_KEY
 
 const { handleLocker, handlePhotos, handleSuggest, handleShade } = createApiHandlers({ sharedKey, anthropicApiKey })
 
-const serveStatic = sirv('dist', { single: true })
+// sirv's MIME table (mrmime) has no .ico entry, so favicon.ico would go out
+// with no Content-Type at all.
+const serveStatic = sirv('dist', {
+  single: true,
+  setHeaders: (res, pathname) => {
+    if (pathname.endsWith('.ico')) res.setHeader('Content-Type', 'image/x-icon')
+  },
+})
 
 const server = http.createServer((req, res) => {
   const url = req.url || ''
