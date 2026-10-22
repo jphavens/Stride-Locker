@@ -174,25 +174,30 @@ RULES:
 // (e.g. relabeling a second long sleeve as "Base Layer — Top") despite prompt
 // instructions against it. Strip duplicates by matching against actual locker
 // item types rather than trusting the model's own category labels.
-function findLockerType(itemStr, locker) {
-  if (!itemStr) return null;
-  const norm = s => (s||"").toLowerCase().replace(/[^a-z0-9]+/g,"");
-  const target = norm(itemStr);
-  const match = locker.find(i => norm(`${i.brand} ${i.name}`) === target);
+function findLockerType(itemStr, locker, colorway) {
+  const match = findLockerItem(itemStr, locker, colorway);
   return match ? match.type : null;
 }
 // Like findLockerType but returns the whole locker item (needed for `lined`/warmth).
-function findLockerItem(itemStr, locker) {
+// The same garment can sit in the locker in several colorways with different
+// `lined`/warmth values, so when a colorway is given prefer the exact name+colorway
+// match and only fall back to the first name match if none fits.
+function findLockerItem(itemStr, locker, colorway) {
   if (!itemStr) return null;
   const norm = s => (s||"").toLowerCase().replace(/[^a-z0-9]+/g,"");
   const target = norm(itemStr);
-  return locker.find(i => norm(`${i.brand} ${i.name}`) === target) || null;
+  const sameName = locker.filter(i => norm(`${i.brand} ${i.name}`) === target);
+  if (colorway) {
+    const exact = sameName.find(i => norm(i.colorway) === norm(colorway));
+    if (exact) return exact;
+  }
+  return sameName[0] || null;
 }
 const isLinedShorts = it => !!it && it.type === "shorts" && it.lined !== false;
 function sanitizeTopLayering(suggestion, locker) {
   if (!suggestion || !Array.isArray(suggestion.items)) return suggestion;
   const topTypes = new Set(["top-ss","top-ls","tank"]);
-  const isTopItem = row => topTypes.has(findLockerType(row.item, locker));
+  const isTopItem = row => topTypes.has(findLockerType(row.item, locker, row.colorway));
   const topRows = suggestion.items.filter(isTopItem);
   if (topRows.length <= 1) return suggestion;
   const keeper = topRows.find(r => (r.category||"").trim().toLowerCase() === "top") || topRows[0];
@@ -211,9 +216,9 @@ function sanitizeBottomLayering(suggestion, locker) {
   const baseRow = suggestion.items.find(r => /base layer/i.test(r.category||"") && /bottom/i.test(r.category||""));
   if (!bottomRow || !baseRow || bottomRow === baseRow) return suggestion;
 
-  const bottomItem = findLockerItem(bottomRow.item, locker);
-  const baseItem = findLockerItem(baseRow.item, locker);
-  const baseType = baseItem ? baseItem.type : findLockerType(baseRow.item, locker);
+  const bottomItem = findLockerItem(bottomRow.item, locker, bottomRow.colorway);
+  const baseItem = findLockerItem(baseRow.item, locker, baseRow.colorway);
+  const baseType = baseItem ? baseItem.type : null;
 
   // Violation A: anything layered under lined shorts.
   // Violation B: a tights/pants item used as a base layer (it's a standalone garment).
@@ -243,14 +248,14 @@ function sanitizeBottomLayering(suggestion, locker) {
 function sanitizeOuterLayer(suggestion, locker, ctx, wind) {
   if (!suggestion || !Array.isArray(suggestion.items)) return suggestion;
   const topRow = suggestion.items.find(r => (r.category||"").trim().toLowerCase() === "top");
-  const vestRow = suggestion.items.find(r => /outer layer/i.test(r.category||"") && findLockerType(r.item, locker) === "vest");
+  const vestRow = suggestion.items.find(r => /outer layer/i.test(r.category||"") && findLockerType(r.item, locker, r.colorway) === "vest");
   if (!topRow || !vestRow) return suggestion;
-  if (findLockerType(topRow.item, locker) !== "top-ls") return suggestion;
+  if (findLockerType(topRow.item, locker, topRow.colorway) !== "top-ls") return suggestion;
 
   const windForced = (ctx.climate || []).some(c => /wind-blocking layer/i.test(c));
   if (windForced || wind > 18) return suggestion;
   if (ctx.felt < 45) return suggestion;
-  const top = findLockerItem(topRow.item, locker);
+  const top = findLockerItem(topRow.item, locker, topRow.colorway);
   if (top && typeof top.warmthMin === "number" && ctx.felt < top.warmthMin + 6) return suggestion;
 
   console.warn("Stride: removed a considered vest stacked over a long-sleeve Top in calm, mild conditions", vestRow.item);
@@ -266,17 +271,17 @@ function isInvalidSwap(newItem, previousItem, lockedItems, locker, category) {
   if (norm(newItem.item) === norm(previousItem.item)) return true;
   if (lockedItems.some(l => norm(l.item) === norm(newItem.item))) return true;
   const topTypes = new Set(["top-ss","top-ls","tank"]);
-  const newType = findLockerType(newItem.item, locker);
-  if (topTypes.has(newType) && lockedItems.some(l => topTypes.has(findLockerType(l.item, locker)))) return true;
+  const newType = findLockerType(newItem.item, locker, newItem.colorway);
+  if (topTypes.has(newType) && lockedItems.some(l => topTypes.has(findLockerType(l.item, locker, l.colorway)))) return true;
 
   // Bottom-half layering: don't let a swap create an invalid bottom pair.
   const cat = (category || "").toLowerCase();
   const isBaseBottom = l => /base layer/i.test(l.category || "") && /bottom/i.test(l.category || "");
-  if (cat === "bottom" && isLinedShorts(findLockerItem(newItem.item, locker)) && lockedItems.some(isBaseBottom)) return true;
+  if (cat === "bottom" && isLinedShorts(findLockerItem(newItem.item, locker, newItem.colorway)) && lockedItems.some(isBaseBottom)) return true;
   if (/base layer/i.test(cat) && /bottom/i.test(cat)) {
     if (newType === "tights" || newType === "pants") return true;
     const lockedBottom = lockedItems.find(l => (l.category || "").trim().toLowerCase() === "bottom");
-    if (lockedBottom && isLinedShorts(findLockerItem(lockedBottom.item, locker))) return true;
+    if (lockedBottom && isLinedShorts(findLockerItem(lockedBottom.item, locker, lockedBottom.colorway))) return true;
   }
   return false;
 }
