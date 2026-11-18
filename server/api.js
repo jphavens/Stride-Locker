@@ -403,7 +403,7 @@ export function createApiHandlers({ sharedKey, anthropicApiKey }) {
           const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicApiKey, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 1000, messages: [{ role: 'user', content: prompt }], output_config: { format: { type: 'json_schema', schema: OUTFIT_ITEM_SCHEMA } } })
+            body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 2000, messages: [{ role: 'user', content: prompt }], output_config: { format: { type: 'json_schema', schema: OUTFIT_ITEM_SCHEMA } } })
           })
           const d = await aiRes.json()
           if (!aiRes.ok) throw new Error(d.error?.message || `API error ${aiRes.status}`)
@@ -426,7 +426,7 @@ export function createApiHandlers({ sharedKey, anthropicApiKey }) {
         const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicApiKey, 'anthropic-version': '2023-06-01' },
-          body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 4000, messages: [{ role: 'user', content: prompt }], output_config: { format: { type: 'json_schema', schema: OUTFIT_SUGGESTION_SCHEMA } } })
+          body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 8000, messages: [{ role: 'user', content: prompt }], output_config: { format: { type: 'json_schema', schema: OUTFIT_SUGGESTION_SCHEMA } } })
         })
         const d = await aiRes.json()
         if (!aiRes.ok) throw new Error(d.error?.message || `API error ${aiRes.status}`)
