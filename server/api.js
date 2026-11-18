@@ -374,6 +374,17 @@ export function createApiHandlers({ sharedKey, anthropicApiKey }) {
     } else { res.writeHead(405); res.end() }
   }
 
+  // Logs usage (incl. output_tokens_details.thinking_tokens) and content-block
+  // shapes on max_tokens truncations. Never logs prompt text or the API key.
+  function logTruncation(label, d) {
+    const blocks = (d.content || []).map(b => {
+      if (b.type === 'text') return { type: 'text', len: (b.text || '').length }
+      if (b.type === 'thinking') return { type: 'thinking', len: (b.thinking || '').length }
+      return { type: b.type, len: JSON.stringify(b).length }
+    })
+    console.warn(`[api] ${label} truncated at max_tokens`, JSON.stringify({ usage: d.usage, blocks }))
+  }
+
   // Outfit suggestion — server builds climate context + prompt, calls Anthropic,
   // sanitizes the response, returns the same shape the client already expects.
   function handleSuggest(req, res) {
@@ -396,7 +407,10 @@ export function createApiHandlers({ sharedKey, anthropicApiKey }) {
           })
           const d = await aiRes.json()
           if (!aiRes.ok) throw new Error(d.error?.message || `API error ${aiRes.status}`)
-          if (d.stop_reason === 'max_tokens') console.warn('Swap call hit max_tokens')
+          if (d.stop_reason === 'max_tokens') {
+            logTruncation('Swap call', d)
+            throw new Error('Swap response truncated at max_tokens')
+          }
           const txt = d.content?.find(b => b.type === 'text')?.text || ''
           const newItem = JSON.parse(txt.trim())
           if (isInvalidSwap(newItem, previousItem, lockedItems, locker, category)) {
@@ -416,7 +430,10 @@ export function createApiHandlers({ sharedKey, anthropicApiKey }) {
         })
         const d = await aiRes.json()
         if (!aiRes.ok) throw new Error(d.error?.message || `API error ${aiRes.status}`)
-        if (d.stop_reason === 'max_tokens') console.warn('Outfit call hit max_tokens')
+        if (d.stop_reason === 'max_tokens') {
+          logTruncation('Outfit call', d)
+          throw new Error('Outfit response truncated at max_tokens')
+        }
         const txt = d.content?.find(b => b.type === 'text')?.text || ''
         const parsed = sanitizeOuterLayer(
           sanitizeBottomLayering(
@@ -454,7 +471,7 @@ export function createApiHandlers({ sharedKey, anthropicApiKey }) {
         })
         const d = await aiRes.json()
         if (!aiRes.ok) throw new Error(d.error?.message || `API error ${aiRes.status}`)
-        if (d.stop_reason === 'max_tokens') console.warn('Photo/shade call hit max_tokens')
+        if (d.stop_reason === 'max_tokens') logTruncation('Shade call', d)
         const text = d.content?.find(b => b.type === 'text')?.text?.trim()
         if (!text) throw new Error('Empty response from model')
         res.end(JSON.stringify({ shadeDescription: text }))
